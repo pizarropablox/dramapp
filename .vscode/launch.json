@@ -1,0 +1,29 @@
+{
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "backend: Spring Boot",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "cl.dramapp.backend.BackendApplication",
+      "projectName": "backend",
+      "cwd": "${workspaceFolder}/backend"
+    },
+    {
+      "name": "frontend: ng serve",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "frontend: npm start",
+      "url": "http://localhost:4200/",
+      "webRoot": "${workspaceFolder}/frontend"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "fullstack: backend + frontend",
+      "configurations": ["backend: Spring Boot", "frontend: ng serve"],
+      "stopAll": true
+    }
+  ]
+}

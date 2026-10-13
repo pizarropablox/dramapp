@@ -1,0 +1,2 @@
+-- Initial baseline migration.
+-- Intentionally empty: tables will be added in later migrations (V2__..., V3__...).
