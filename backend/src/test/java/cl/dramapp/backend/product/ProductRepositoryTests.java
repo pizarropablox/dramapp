@@ -25,7 +25,7 @@ class ProductRepositoryTests {
 
 	@Test
 	void savesAndReadsAProductWithVariants() {
-		Product product = new Product("Jack Daniels", 5000, 3, 12000L, 1);
+		Product product = new Product("Test Whiskey", 5000, 3, 12000L, 1);
 		product.addVariant("Honey", 2);
 		product.addVariant("Original", 1);
 		Product saved = productRepository.saveAndFlush(product);
@@ -33,7 +33,7 @@ class ProductRepositoryTests {
 
 		Product found = productRepository.findById(saved.getId()).orElseThrow();
 
-		assertThat(found.getName()).isEqualTo("Jack Daniels");
+		assertThat(found.getName()).isEqualTo("Test Whiskey");
 		assertThat(found.getUnitPrice()).isEqualTo(5000);
 		assertThat(found.getPromoQuantity()).isEqualTo(3);
 		assertThat(found.getPromoPrice()).isEqualTo(12000L);
@@ -49,16 +49,16 @@ class ProductRepositoryTests {
 
 	@Test
 	void databaseRejectsProductNamesDifferingOnlyByCase() {
-		productRepository.saveAndFlush(new Product("Jack Daniels", 5000, 1));
+		productRepository.saveAndFlush(new Product("Test Whiskey", 5000, 1));
 
-		assertThatThrownBy(() -> productRepository.saveAndFlush(new Product("jack daniels", 5000, 2)))
+		assertThatThrownBy(() -> productRepository.saveAndFlush(new Product("test whiskey", 5000, 2)))
 			.isInstanceOf(DataIntegrityViolationException.class)
 			.hasMessageContaining("ux_product_name");
 	}
 
 	@Test
 	void databaseRejectsVariantNamesDifferingOnlyByCaseWithinAProduct() {
-		Product product = new Product("Jack Daniels", 5000, 1);
+		Product product = new Product("Test Whiskey", 5000, 1);
 		product.addVariant("Honey", 1);
 		product.addVariant("HONEY", 2);
 
@@ -69,7 +69,7 @@ class ProductRepositoryTests {
 
 	@Test
 	void allowsTheSameVariantNameInDifferentProducts() {
-		Product beer = new Product("Cerveza", 2500, 1);
+		Product beer = new Product("Test Beer", 2500, 1);
 		beer.addVariant("Única", 1);
 		Product energyDrink = new Product("Energética", 2000, 2);
 		energyDrink.addVariant("Única", 1);
@@ -82,14 +82,14 @@ class ProductRepositoryTests {
 
 	@Test
 	void databaseRejectsPromoQuantityWithoutPromoPrice() {
-		assertThatThrownBy(() -> productRepository.saveAndFlush(new Product("Jack Daniels", 5000, 3, null, 1)))
+		assertThatThrownBy(() -> productRepository.saveAndFlush(new Product("Test Whiskey", 5000, 3, null, 1)))
 			.isInstanceOf(DataIntegrityViolationException.class)
 			.hasMessageContaining("ck_product_promo_pair");
 	}
 
 	@Test
 	void databaseRejectsPromoQuantityBelowTwo() {
-		assertThatThrownBy(() -> productRepository.saveAndFlush(new Product("Jack Daniels", 5000, 1, 4000L, 1)))
+		assertThatThrownBy(() -> productRepository.saveAndFlush(new Product("Test Whiskey", 5000, 1, 4000L, 1)))
 			.isInstanceOf(DataIntegrityViolationException.class)
 			.hasMessageContaining("ck_product_promo_quantity");
 	}

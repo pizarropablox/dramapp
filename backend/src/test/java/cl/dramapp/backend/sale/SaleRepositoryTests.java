@@ -37,12 +37,12 @@ class SaleRepositoryTests {
 	@Test
 	void savesAndReadsASaleWithLines() {
 		Event event = eventRepository.save(new Event("DRAMA Octubre", LocalDate.of(2026, 10, 24)));
-		Product jack = new Product("Jack Daniels", 5000, 3, 12000L, 1);
-		ProductVariant original = jack.addVariant("Original", 1);
-		ProductVariant honey = jack.addVariant("Honey", 2);
-		Product beer = new Product("Cerveza", 2500, 2);
+		Product whiskey = new Product("Test Whiskey", 5000, 3, 12000L, 1);
+		ProductVariant original = whiskey.addVariant("Original", 1);
+		ProductVariant honey = whiskey.addVariant("Honey", 2);
+		Product beer = new Product("Test Beer", 2500, 2);
 		ProductVariant beerSingle = beer.addVariant("Única", 1);
-		productRepository.saveAll(List.of(jack, beer));
+		productRepository.saveAll(List.of(whiskey, beer));
 
 		Sale sale = new Sale(event, PaymentMethod.MERCADO_PAGO, 14500, 1000);
 		sale.addLine(original, 2);
@@ -72,20 +72,20 @@ class SaleRepositoryTests {
 	@Test
 	void saleLinesKeepThePriceSnapshotWhenTheMenuChanges() {
 		Event event = eventRepository.save(new Event("DRAMA Octubre", LocalDate.of(2026, 10, 24)));
-		Product jack = new Product("Jack Daniels", 5000, 3, 12000L, 1);
-		ProductVariant original = jack.addVariant("Original", 1);
-		productRepository.save(jack);
+		Product whiskey = new Product("Test Whiskey", 5000, 3, 12000L, 1);
+		ProductVariant original = whiskey.addVariant("Original", 1);
+		productRepository.save(whiskey);
 
 		Sale sale = new Sale(event, PaymentMethod.EFECTIVO, 5000, 0);
 		sale.addLine(original, 1);
 		Sale saved = saleRepository.saveAndFlush(sale);
 
-		jack.changePrices(6000, null, null);
-		productRepository.saveAndFlush(jack);
+		whiskey.changePrices(6000, null, null);
+		productRepository.saveAndFlush(whiskey);
 		entityManager.clear();
 
 		SaleLine line = saleRepository.findById(saved.getId()).orElseThrow().getLines().getFirst();
-		Product reloaded = productRepository.findById(jack.getId()).orElseThrow();
+		Product reloaded = productRepository.findById(whiskey.getId()).orElseThrow();
 
 		assertThat(reloaded.getUnitPrice()).isEqualTo(6000);
 		assertThat(line.getUnitPrice()).isEqualTo(5000);
