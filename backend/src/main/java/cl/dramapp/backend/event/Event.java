@@ -53,6 +53,14 @@ public class Event {
 		this.openedAt = Instant.now();
 	}
 
+	public void close() {
+		if (status == EventStatus.CLOSED) {
+			throw new IllegalStateException("Event " + id + " is already closed");
+		}
+		this.status = EventStatus.CLOSED;
+		this.closedAt = Instant.now();
+	}
+
 	public Long getId() {
 		return id;
 	}
