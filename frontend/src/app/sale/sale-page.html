@@ -1,0 +1,91 @@
+<div class="sale-page">
+  <header class="top">
+    <h1 class="visually-hidden">Venta en barra</h1>
+    <div class="status">
+      @if (event.isLoading()) {
+        <p class="event" role="status">Cargando evento…</p>
+      } @else if (event.error()) {
+        <div class="banner danger" role="alert">
+          <p>No se pudo cargar el evento. {{ eventErrorMessage() }}</p>
+          <button type="button" (click)="event.reload()">Reintentar</button>
+        </div>
+      } @else if (openEvent(); as current) {
+        <p class="event">
+          <span class="event-name">{{ current.name }}</span>
+          <span class="pill">Abierto</span>
+        </p>
+      } @else {
+        <div class="banner danger" role="alert">
+          <p><strong>Sin evento abierto</strong></p>
+          <button type="button" (click)="event.reload()">Reintentar</button>
+        </div>
+      }
+    </div>
+    <input
+      class="search"
+      type="search"
+      placeholder="Buscar producto"
+      aria-label="Buscar producto"
+      autocomplete="off"
+      [value]="search()"
+      (input)="onSearch($event)"
+    />
+  </header>
+
+  <main class="menu" aria-label="Carta">
+    @if (menu.isLoading()) {
+      <p role="status">Cargando carta…</p>
+    } @else if (menu.error()) {
+      <div class="banner danger" role="alert">
+        <p>No se pudo cargar la carta. {{ menuErrorMessage() }}</p>
+        <button type="button" (click)="menu.reload()">Reintentar</button>
+      </div>
+    } @else if (visibleProducts().length === 0) {
+      <p class="empty">Sin productos para “{{ search() }}”.</p>
+    } @else {
+      <app-product-grid
+        [products]="visibleProducts()"
+        [unitsByProduct]="cart.unitsByProduct()"
+        (selected)="selectProduct($event)"
+      />
+    }
+  </main>
+
+  <section class="checkout" aria-label="Venta actual">
+    <app-cart-panel
+      [lines]="cart.lines()"
+      [itemCount]="cart.itemCount()"
+      [(expanded)]="cartExpanded"
+      (incremented)="cart.increment($event)"
+      (decremented)="cart.decrement($event)"
+      (cleared)="cart.clear()"
+    />
+    @if (saleError(); as message) {
+      <div class="banner danger" role="alert">
+        <p>{{ message }}</p>
+        <button type="button" aria-label="Cerrar aviso" (click)="saleError.set(null)">✕</button>
+      </div>
+    }
+    <app-checkout-bar
+      [total]="cart.totals().subtotal"
+      [savings]="cart.totals().savings"
+      [(paymentMethod)]="paymentMethod"
+      [canConfirm]="canConfirm()"
+      [submitting]="submitting()"
+      [hint]="blockReason()"
+      (confirmed)="confirm()"
+    />
+  </section>
+</div>
+
+@if (pickingProduct(); as product) {
+  <app-variant-picker
+    [product]="product"
+    (picked)="pickVariant(product, $event)"
+    (cancelled)="pickingProduct.set(null)"
+  />
+}
+
+@if (lastSale(); as sale) {
+  <app-sale-confirmation [sale]="sale" (nextSale)="lastSale.set(null)" />
+}

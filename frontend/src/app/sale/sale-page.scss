@@ -1,0 +1,121 @@
+// One-row header on top, scrollable menu in the middle (at least ~50% of the height),
+// cart + total + confirm pinned to the bottom (thumb zone) and capped at 45% of the height.
+.sale-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 30rem;
+  margin: 0 auto;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: calc(0.375rem + env(safe-area-inset-top)) 0.75rem 0.375rem;
+}
+
+.status {
+  flex: 1;
+  min-width: 0;
+}
+
+.event {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.event-name {
+  overflow: hidden;
+  font-size: 1.05rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pill {
+  flex: none;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--success);
+  color: var(--on-success);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.search {
+  flex: 0 1 9.5rem;
+  min-width: 6.5rem;
+  height: 2.25rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem; // >= 16px so iOS Safari does not zoom in on focus
+}
+
+.menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem 0.75rem 0.5rem;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+}
+
+.checkout {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 0.375rem;
+  max-height: 45dvh;
+  padding: 0.375rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 40%);
+
+  > * {
+    flex: none;
+  }
+
+  // The cart is the only part that shrinks when space runs out.
+  > app-cart-panel {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0.25rem 0.2rem 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+
+  p {
+    margin: 0;
+  }
+
+  button {
+    flex: none;
+    min-height: 2.25rem;
+    padding: 0 0.6rem;
+    font-size: 0.9rem;
+  }
+}
+
+.danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}

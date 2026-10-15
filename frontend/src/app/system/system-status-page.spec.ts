@@ -1,15 +1,16 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { App } from './app';
+import { provideRouter } from '@angular/router';
+import { SystemStatusPage } from './system-status-page';
 
-describe('App', () => {
+describe('SystemStatusPage', () => {
   let httpTesting: HttpTestingController;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [App],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      imports: [SystemStatusPage],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
 
     httpTesting = TestBed.inject(HttpTestingController);
@@ -20,7 +21,7 @@ describe('App', () => {
   });
 
   it('should render title', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(SystemStatusPage);
     TestBed.tick();
     httpTesting.expectOne('/api/system/status').flush(null);
     await fixture.whenStable();
@@ -29,7 +30,7 @@ describe('App', () => {
   });
 
   it('should render backend and database status', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(SystemStatusPage);
     TestBed.tick();
 
     httpTesting.expectOne('/api/system/status').flush({
@@ -47,7 +48,7 @@ describe('App', () => {
   });
 
   it('should show an error message when the backend is unreachable', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(SystemStatusPage);
     TestBed.tick();
 
     httpTesting
