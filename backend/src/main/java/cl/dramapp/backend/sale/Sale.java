@@ -28,6 +28,12 @@ import jakarta.persistence.Table;
 @Table(name = "sale")
 public class Sale {
 
+	/**
+	 * Highest tip accepted, in whole pesos, to catch typos. Fixed on purpose: a tip may exceed the
+	 * products total (a cheap item with a generous tip).
+	 */
+	public static final long MAX_TIP = 10_000;
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;

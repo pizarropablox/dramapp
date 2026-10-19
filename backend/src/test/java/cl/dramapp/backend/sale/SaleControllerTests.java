@@ -85,8 +85,8 @@ class SaleControllerTests {
 		assertThat(result).bodyJson().extractingPath("$.eventId").convertTo(Long.class).isEqualTo(event.getId());
 		assertThat(result).bodyJson().extractingPath("$.paymentMethod").isEqualTo("EFECTIVO");
 		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(22000);
-		assertThat(result).bodyJson().extractingPath("$.tip").isEqualTo(0);
-		assertThat(result).bodyJson().extractingPath("$.total").isEqualTo(22000);
+		assertThat(result).bodyJson().extractingPath("$.tipAmount").isEqualTo(0);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(22000);
 		assertThat(result).bodyJson().extractingPath("$.createdAt").asString().isNotBlank();
 		assertThat(result).bodyJson().extractingPath("$.lines[*].productName").asArray()
 			.containsExactly("Jack Daniels", "Jack Daniels", "Red Bull");
@@ -126,7 +126,7 @@ class SaleControllerTests {
 		assertThat(result).hasStatus(HttpStatus.CREATED);
 		assertThat(result).bodyJson().extractingPath("$.lines.length()").isEqualTo(1);
 		assertThat(result).bodyJson().extractingPath("$.lines[0].quantity").isEqualTo(3);
-		assertThat(result).bodyJson().extractingPath("$.total").isEqualTo(13000);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(13000);
 
 		entityManager.flush();
 		entityManager.clear();
@@ -268,11 +268,120 @@ class SaleControllerTests {
 		ProductVariant redBull = variant("Red Bull", "Única");
 
 		var result = post("""
-				{"paymentMethod": "EFECTIVO", "total": 1, "subtotal": 1,
+				{"paymentMethod": "EFECTIVO", "total": 1, "subtotal": 1, "amountToCharge": 1,
 				 "lines": [{"variantId": %d, "quantity": 1, "unitPrice": 1}]}""".formatted(redBull.getId()));
 
 		assertThat(result).hasStatus(HttpStatus.CREATED);
-		assertThat(result).bodyJson().extractingPath("$.total").isEqualTo(3500);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(3500);
+	}
+
+	@Test
+	void treatsAMissingTipAsZero() {
+		openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(redBull.getId()));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(3500);
+		assertThat(result).bodyJson().extractingPath("$.tipAmount").isEqualTo(0);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(3500);
+	}
+
+	@Test
+	void savesTheTipApartFromTheProductsSubtotal() {
+		openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+
+		var result = post("""
+				{"paymentMethod": "MERCADO_PAGO", "tipAmount": 500,
+				 "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(redBull.getId()));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.paymentMethod").isEqualTo("MERCADO_PAGO");
+		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(3500);
+		assertThat(result).bodyJson().extractingPath("$.tipAmount").isEqualTo(500);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(4000);
+
+		entityManager.flush();
+		entityManager.clear();
+		Sale saved = saleRepository.findAll().getFirst();
+		assertThat(saved.getSubtotal()).isEqualTo(3500);
+		assertThat(saved.getTip()).isEqualTo(500);
+	}
+
+	@Test
+	void theTipDoesNotChangeThePromoPrice() {
+		openEvent();
+		ProductVariant piscola = variant("Piscola", "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "tipAmount": 1000,
+				 "lines": [{"variantId": %d, "quantity": 3}]}""".formatted(piscola.getId()));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(13000);
+		assertThat(result).bodyJson().extractingPath("$.tipAmount").isEqualTo(1000);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(14000);
+	}
+
+	@Test
+	void acceptsATipGreaterThanTheProductsSubtotal() {
+		openEvent();
+		ProductVariant agua = variant("Agua 600cc", "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "tipAmount": 5000,
+				 "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(agua.getId()));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(3000);
+		assertThat(result).bodyJson().extractingPath("$.tipAmount").isEqualTo(5000);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(8000);
+	}
+
+	@Test
+	void acceptsATipEqualToTheCap() {
+		openEvent();
+		ProductVariant agua = variant("Agua 600cc", "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "tipAmount": 10000,
+				 "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(agua.getId()));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(13000);
+	}
+
+	@Test
+	void rejectsANegativeTip() {
+		openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "tipAmount": -500,
+				 "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(redBull.getId()));
+
+		assertBadRequest(result);
+		assertThat(result).bodyJson().extractingPath("$.errors").asArray().singleElement().asString()
+			.isEqualTo("tipAmount: La propina no puede ser negativa.");
+	}
+
+	@Test
+	void rejectsATipAboveTheCap() {
+		openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "tipAmount": 10001,
+				 "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(redBull.getId()));
+
+		assertBadRequest(result);
+		assertThat(result).bodyJson().extractingPath("$.detail").asString()
+			.contains("La propina no puede superar $10.000.");
+		assertThat(result).bodyJson().extractingPath("$.errors").asArray().singleElement().asString()
+			.isEqualTo("tipAmount: La propina no puede superar $10.000.");
 	}
 
 }
