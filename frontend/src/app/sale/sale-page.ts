@@ -5,13 +5,15 @@ import { EventService } from '../event/event.service';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { errorMessage } from '../shared/api-error';
+import { formatClp } from '../shared/clp';
 import { CartPanel } from './cart-panel';
 import { CartStore } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
 import { ProductGrid } from './product-grid';
-import { PaymentMethod, SaleResponse } from './sale';
+import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
+import { NO_TIP, TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
 
 function normalize(text: string): string {
@@ -24,7 +26,7 @@ function normalize(text: string): string {
 
 @Component({
   selector: 'app-sale-page',
-  imports: [CartPanel, CheckoutBar, ProductGrid, SaleConfirmation, VariantPicker],
+  imports: [CartPanel, CheckoutBar, ProductGrid, SaleConfirmation, TipSelector, VariantPicker],
   providers: [CartStore],
   templateUrl: './sale-page.html',
   styleUrl: './sale-page.scss',
@@ -55,6 +57,8 @@ export class SalePage {
 
   protected readonly pickingProduct = signal<ProductResponse | null>(null);
   protected readonly paymentMethod = signal<PaymentMethod | null>(null);
+  protected readonly tip = signal<TipChoice>(NO_TIP);
+  protected readonly tipAmount = computed(() => this.tip().amount);
   protected readonly submitting = signal(false);
   protected readonly saleError = signal<string | null>(null);
   protected readonly lastSale = signal<SaleResponse | null>(null);
@@ -65,6 +69,9 @@ export class SalePage {
     }
     if (this.cart.isEmpty()) {
       return 'Agrega productos para vender.';
+    }
+    if (this.tipAmount() > MAX_TIP) {
+      return `La propina no puede superar ${formatClp(MAX_TIP)}.`;
     }
     if (!this.paymentMethod()) {
       return 'Elige el medio de pago.';
@@ -99,13 +106,14 @@ export class SalePage {
     this.submitting.set(true);
     this.saleError.set(null);
     this.saleService
-      .register({ paymentMethod, lines: this.cart.toRequestLines() })
+      .register({ paymentMethod, lines: this.cart.toRequestLines(), tipAmount: this.tipAmount() })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (sale) => {
           this.lastSale.set(sale);
           this.cart.clear();
           this.paymentMethod.set(null);
+          this.tip.set(NO_TIP);
           this.submitting.set(false);
         },
         error: (error: unknown) => {

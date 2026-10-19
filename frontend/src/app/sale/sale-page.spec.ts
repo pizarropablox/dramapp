@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type { Mock } from 'vitest';
 import { EventResponse } from '../event/event';
 import { ProductResponse } from '../product/product';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
@@ -60,8 +61,12 @@ const MENU: ProductResponse[] = [
 describe('SalePage', () => {
   let httpTesting: HttpTestingController;
   let fixture: ComponentFixture<SalePage>;
+  // jsdom does not implement scrollIntoView.
+  let scrollIntoView: Mock<(options?: boolean | ScrollIntoViewOptions) => void>;
 
   beforeEach(async () => {
+    scrollIntoView = vi.fn<(options?: boolean | ScrollIntoViewOptions) => void>();
+    Element.prototype.scrollIntoView = scrollIntoView;
     await TestBed.configureTestingModule({
       imports: [SalePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
@@ -71,6 +76,7 @@ describe('SalePage', () => {
 
   afterEach(() => {
     httpTesting.verify();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
   async function setup(event: EventResponse | null = OPEN_EVENT): Promise<void> {
@@ -136,6 +142,17 @@ describe('SalePage', () => {
   async function tap(element: HTMLElement): Promise<void> {
     element.click();
     await fixture.whenStable();
+  }
+
+  function saleResponse(amounts: Pick<SaleResponse, 'subtotal' | 'tipAmount' | 'amountToCharge'>): SaleResponse {
+    return {
+      id: 501,
+      eventId: OPEN_EVENT.id,
+      paymentMethod: 'MERCADO_PAGO',
+      lines: [],
+      createdAt: '2026-10-31T23:15:00Z',
+      ...amounts,
+    };
   }
 
   async function search(query: string): Promise<void> {
@@ -276,6 +293,21 @@ describe('SalePage', () => {
       expect(cartLabels()).toEqual([]);
     });
 
+    it('scrolls to the line just added, also when it was already in the cart', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(productButton('Agua 600cc'));
+
+      const scrolledLabel = () =>
+        (scrollIntoView.mock.contexts.at(-1) as HTMLElement).querySelector('.label')?.textContent?.trim();
+      expect(scrolledLabel()).toBe('Agua 600cc');
+
+      await tap(productButton('Red Bull'));
+
+      expect(scrolledLabel()).toBe('Red Bull');
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest', behavior: 'smooth' });
+    });
+
     it('empties the cart', async () => {
       await setup();
       await tap(productButton('Red Bull'));
@@ -343,26 +375,18 @@ describe('SalePage', () => {
           { variantId: 91, quantity: 1 },
           { variantId: 121, quantity: 1 },
         ],
+        tipAmount: 0,
       });
 
       // The backend is the authority: show its total even if it differs from the local one.
-      const sale: SaleResponse = {
-        id: 501,
-        eventId: OPEN_EVENT.id,
-        paymentMethod: 'MERCADO_PAGO',
-        lines: [],
-        subtotal: 12345,
-        tip: 0,
-        total: 12345,
-        createdAt: '2026-10-31T23:15:00Z',
-      };
-      request.flush(sale);
+      request.flush(saleResponse({ subtotal: 12345, tipAmount: 0, amountToCharge: 12345 }));
       await fixture.whenStable();
 
       const confirmation = root().querySelector('[role="alertdialog"]')!;
       expect(confirmation.textContent).toContain('Venta registrada');
       expect(confirmation.textContent).toContain('$12.345');
       expect(confirmation.textContent).toContain('Mercado Pago');
+      expect(confirmation.textContent).not.toContain('propina');
       expect(text()).toContain('Carrito (0)');
       expect(button('Mercado Pago').getAttribute('aria-pressed')).toBe('false');
 
@@ -411,6 +435,164 @@ describe('SalePage', () => {
       expect(text()).toContain(NO_CONNECTION_MESSAGE);
       expect(cartLabels()).toEqual(['Red Bull']);
       expect(confirmButton().disabled).toBe(false);
+    });
+  });
+
+  describe('tip', () => {
+    function customTip(): HTMLInputElement {
+      return root().querySelector<HTMLInputElement>('app-tip-selector input')!;
+    }
+
+    async function typeCustomTip(value: string): Promise<void> {
+      const input = customTip();
+      input.dispatchEvent(new Event('focus'));
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+    }
+
+    function checkout(): string {
+      return root().querySelector('app-checkout-bar')!.textContent ?? '';
+    }
+
+    it('starts with "Sin propina" and charges only the products', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+
+      expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+      expect(customTip().value).toBe('');
+      expect(checkout()).toContain('$3.500');
+      expect(checkout()).not.toContain('propina');
+    });
+
+    it('adds a quick tip to the amount to charge and shows the breakdown', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+
+      await tap(button('$1.000'));
+
+      expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+      expect(button('Sin propina').getAttribute('aria-pressed')).toBe('false');
+      expect(root().querySelector('app-checkout-bar .amount')?.textContent).toContain('$4.500');
+      expect(checkout()).toContain('Productos $3.500 + propina $1.000');
+    });
+
+    it('accepts a custom amount, keeping only digits', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(button('$500'));
+
+      await typeCustomTip('1.5a00');
+
+      expect(customTip().value).toBe('1500');
+      expect(customTip().classList).toContain('selected');
+      expect(button('$500').getAttribute('aria-pressed')).toBe('false');
+      expect(root().querySelector('app-checkout-bar .amount')?.textContent).toContain('$5.000');
+      expect(checkout()).toContain('Productos $3.500 + propina $1.500');
+    });
+
+    it('goes back to "Sin propina" from a custom amount', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await typeCustomTip('700');
+
+      await tap(button('Sin propina'));
+
+      expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+      expect(customTip().value).toBe('');
+      expect(checkout()).not.toContain('propina');
+    });
+
+    it('returns to "Sin propina" when "Otro" is left empty', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await typeCustomTip('');
+
+      customTip().dispatchEvent(new Event('blur'));
+      await fixture.whenStable();
+
+      expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('allows a tip greater than the products total', async () => {
+      await setup();
+      await tap(productButton('Agua 600cc'));
+      await tap(button('Efectivo'));
+
+      await typeCustomTip('5000');
+
+      expect(confirmButton().disabled).toBe(false);
+      expect(root().querySelector('app-checkout-bar .amount')?.textContent).toContain('$8.000');
+    });
+
+    it('blocks the sale when the tip goes over $10.000', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(button('Efectivo'));
+
+      await typeCustomTip('10001');
+
+      expect(confirmButton().disabled).toBe(true);
+      expect(text()).toContain('La propina no puede superar $10.000.');
+      expect(customTip().getAttribute('aria-invalid')).toBe('true');
+
+      await typeCustomTip('10000');
+
+      expect(confirmButton().disabled).toBe(false);
+    });
+
+    it('sends tipAmount, shows the backend breakdown and resets the tip after the sale', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(button('$2.000'));
+      await tap(button('Mercado Pago'));
+
+      await tap(confirmButton());
+      const request = httpTesting.expectOne('/api/sales');
+      expect(request.request.body).toEqual({
+        paymentMethod: 'MERCADO_PAGO',
+        lines: [{ variantId: 121, quantity: 1 }],
+        tipAmount: 2000,
+      });
+      request.flush(saleResponse({ subtotal: 3500, tipAmount: 2000, amountToCharge: 5500 }));
+      await fixture.whenStable();
+
+      const confirmation = root().querySelector('[role="alertdialog"]')!.textContent;
+      expect(confirmation).toContain('Cobrar');
+      expect(confirmation).toContain('$5.500');
+      expect(confirmation).toContain('Productos $3.500 + propina $2.000');
+      expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+      expect(button('$2.000').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('resets a custom tip after the sale', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await typeCustomTip('1200');
+      await tap(button('Efectivo'));
+
+      await tap(confirmButton());
+      const request = httpTesting.expectOne('/api/sales');
+      expect(request.request.body.tipAmount).toBe(1200);
+      request.flush(saleResponse({ subtotal: 3500, tipAmount: 1200, amountToCharge: 4700 }));
+      await fixture.whenStable();
+
+      expect(customTip().value).toBe('');
+      expect(customTip().classList).not.toContain('selected');
+      expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('keeps the tip when the sale fails', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(button('$500'));
+      await tap(button('Efectivo'));
+
+      await tap(confirmButton());
+      httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+      await fixture.whenStable();
+
+      expect(button('$500').getAttribute('aria-pressed')).toBe('true');
     });
   });
 });

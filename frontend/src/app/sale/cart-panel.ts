@@ -1,5 +1,5 @@
-import { Component, input, model, output } from '@angular/core';
-import { CartLine } from './cart-store';
+import { afterRenderEffect, Component, ElementRef, input, model, output, viewChild } from '@angular/core';
+import { AddedLine, CartLine } from './cart-store';
 
 @Component({
   selector: 'app-cart-panel',
@@ -21,9 +21,9 @@ import { CartLine } from './cart-store';
       }
     </div>
     @if (expanded() && lines().length > 0) {
-      <ul id="cart-lines" class="lines">
+      <ul #list id="cart-lines" class="lines">
         @for (line of lines(); track line.variant.id) {
-          <li class="line">
+          <li class="line" [attr.data-variant-id]="line.variant.id">
             <span class="label">
               {{ line.product.name }}
               @if (line.product.variants.length > 1) {
@@ -86,19 +86,42 @@ import { CartLine } from './cart-store';
       color: var(--accent);
     }
 
-    // At most 2.5 rows (so it shows there is more to scroll), never less than 1.
+    // Visible rows depend on the height: 2 (< 720px), 3 (720-879px), 4 (>= 880px).
+    // 880 keeps 393x852 phones (iPhone 16) at 3 rows.
+    // The dvh cap drops rows when they would leave the product grid under 3 full rows
+    // (554px = header 48 + 3 grid rows 248 + rest of the checkout 258, with tip breakdown)
+    // or push the checkout over its 55dvh cap (258px of it is not cart lines).
+    // Never under 2 rows; more lines scroll, snapping to whole rows so none is cut in half.
     .lines {
-      flex: 0 1 auto;
-      min-height: 2.75rem;
-      max-height: 6.875rem;
+      --rows: 2;
+      flex: none;
+      max-height: 5.5rem; // fallback where round() is unsupported
+      max-height: min(
+        calc(var(--rows) * 2.75rem),
+        max(5.5rem, round(down, min(100dvh - 554px, 55dvh - 258px), 2.75rem))
+      );
       overflow-y: auto;
       overscroll-behavior: contain;
+      scroll-snap-type: y mandatory;
       margin: 0;
       padding: 0;
       list-style: none;
     }
 
+    @media (min-height: 720px) {
+      .lines {
+        --rows: 3;
+      }
+    }
+
+    @media (min-height: 880px) {
+      .lines {
+        --rows: 4;
+      }
+    }
+
     .line {
+      scroll-snap-align: start;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -153,6 +176,23 @@ export class CartPanel {
   readonly incremented = output<number>();
   readonly decremented = output<number>();
   readonly cleared = output<void>();
+  /** Scrolled into view whenever it changes, so the cashier always sees the latest add. */
+  readonly lastAdded = input<AddedLine | null>(null);
+
+  private readonly list = viewChild<ElementRef<HTMLElement>>('list');
+
+  constructor() {
+    afterRenderEffect(() => {
+      const added = this.lastAdded();
+      const list = this.list()?.nativeElement;
+      if (!added || !list) {
+        return;
+      }
+      list
+        .querySelector<HTMLElement>(`[data-variant-id="${added.variantId}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
 
   protected lineName(line: CartLine): string {
     return line.product.variants.length > 1

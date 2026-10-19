@@ -18,7 +18,12 @@ import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
       <h2 id="sale-confirmation-title">Venta registrada</h2>
       <p id="sale-confirmation-amount" class="amount">
         <span>Cobrar</span>
-        <strong>{{ sale().total | clp }}</strong>
+        <strong>{{ sale().amountToCharge | clp }}</strong>
+        @if (sale().tipAmount > 0) {
+          <span class="breakdown">
+            Productos {{ sale().subtotal | clp }} + propina {{ sale().tipAmount | clp }}
+          </span>
+        }
         <span class="method">{{ labels[sale().paymentMethod] }}</span>
       </p>
       <button #next type="button" class="next" (click)="nextSale.emit()">Siguiente venta</button>
@@ -58,6 +63,11 @@ import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
     .amount strong {
       font-size: 3rem;
       line-height: 1.1;
+    }
+
+    .breakdown {
+      color: var(--muted);
+      font-size: 1rem;
     }
 
     .method {

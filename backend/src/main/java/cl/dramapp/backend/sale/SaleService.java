@@ -34,7 +34,7 @@ public class SaleService {
 
 	/**
 	 * Registers a sale in the open event, pricing it with the current menu.
-	 * Lines repeating a variant are merged into one.
+	 * Lines repeating a variant are merged into one. The tip is kept apart from the products subtotal.
 	 */
 	@Transactional
 	public SaleResponse register(RegisterSaleRequest request) {
@@ -55,7 +55,7 @@ public class SaleService {
 			.toList();
 		long subtotal = PriceCalculator.subtotal(items);
 
-		Sale sale = new Sale(event, request.paymentMethod(), subtotal, 0);
+		Sale sale = new Sale(event, request.paymentMethod(), subtotal, request.tipAmount());
 		quantityByVariantId.forEach((variantId, quantity) -> sale.addLine(variantsById.get(variantId), quantity));
 		return SaleResponse.from(saleRepository.save(sale));
 	}
