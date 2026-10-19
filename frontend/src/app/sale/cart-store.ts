@@ -90,6 +90,9 @@ export class CartStore {
   }
 
   toRequestLines(): SaleLineRequest[] {
-    return this.linesState().map((line) => ({ variantId: line.variant.id, quantity: line.quantity }));
+    return this.linesState().map((line) => ({
+      variantId: line.variant.id,
+      quantity: line.quantity,
+    }));
   }
 }

@@ -145,7 +145,9 @@ describe('SalePage', () => {
     await fixture.whenStable();
   }
 
-  function saleResponse(amounts: Pick<SaleResponse, 'subtotal' | 'tipAmount' | 'amountToCharge'>): SaleResponse {
+  function saleResponse(
+    amounts: Pick<SaleResponse, 'subtotal' | 'tipAmount' | 'amountToCharge'>,
+  ): SaleResponse {
     return {
       id: 501,
       eventId: OPEN_EVENT.id,
@@ -303,7 +305,9 @@ describe('SalePage', () => {
       await tap(productButton('Agua 600cc'));
 
       const scrolledLabel = () =>
-        (scrollIntoView.mock.contexts.at(-1) as HTMLElement).querySelector('.label')?.textContent?.trim();
+        (scrollIntoView.mock.contexts.at(-1) as HTMLElement)
+          .querySelector('.label')
+          ?.textContent?.trim();
       expect(scrolledLabel()).toBe('Agua 600cc');
 
       await tap(productButton('Red Bull'));
@@ -420,7 +424,9 @@ describe('SalePage', () => {
         .flush({ detail: 'No hay un evento abierto.' }, { status: 404, statusText: 'Not Found' });
       await fixture.whenStable();
 
-      expect(text()).toContain('No hay un evento abierto. Abre un evento antes de registrar ventas.');
+      expect(text()).toContain(
+        'No hay un evento abierto. Abre un evento antes de registrar ventas.',
+      );
       expect(cartLabels()).toEqual(['Red Bull']);
       expect(confirmButton().disabled).toBe(true);
       expect(text()).toContain('Sin evento abierto: no se puede vender.');
@@ -606,8 +612,20 @@ describe('SalePage', () => {
       eventId: OPEN_EVENT.id,
       paymentMethod: 'EFECTIVO',
       lines: [
-        { variantId: 91, variantName: 'Original', productId: 9, productName: 'Jack Daniels', quantity: 1 },
-        { variantId: 121, variantName: 'Única', productId: 12, productName: 'Red Bull', quantity: 1 },
+        {
+          variantId: 91,
+          variantName: 'Original',
+          productId: 9,
+          productName: 'Jack Daniels',
+          quantity: 1,
+        },
+        {
+          variantId: 121,
+          variantName: 'Única',
+          productId: 12,
+          productName: 'Red Bull',
+          quantity: 1,
+        },
       ],
       subtotal: 7000,
       tipAmount: 1000,
@@ -688,8 +706,12 @@ describe('SalePage', () => {
 
         await tap(button('Anular esta venta'));
 
-        expect(voidDialog()!.querySelector('h2')?.textContent).toBe('¿Anular venta de $8.000 (Efectivo)?');
-        expect(voidDialog()!.textContent).toContain('20:15 · 1× Jack Daniels Original · 1× Red Bull');
+        expect(voidDialog()!.querySelector('h2')?.textContent).toBe(
+          '¿Anular venta de $8.000 (Efectivo)?',
+        );
+        expect(voidDialog()!.textContent).toContain(
+          '20:15 · 1× Jack Daniels Original · 1× Red Bull',
+        );
         expect(voidDialog()!.textContent).toContain('Devuelve el efectivo de la caja.');
         expect(voidDialog()!.textContent).not.toContain('Mercado Pago');
         expect(document.activeElement?.textContent?.trim()).toBe('Volver');
@@ -700,8 +722,12 @@ describe('SalePage', () => {
 
         await tap(button('Anular esta venta'));
 
-        expect(voidDialog()!.querySelector('h2')?.textContent).toBe('¿Anular venta de $8.000 (Mercado Pago)?');
-        expect(voidDialog()!.textContent).toContain('Recuerda hacer la devolución en la app de Mercado Pago.');
+        expect(voidDialog()!.querySelector('h2')?.textContent).toBe(
+          '¿Anular venta de $8.000 (Mercado Pago)?',
+        );
+        expect(voidDialog()!.textContent).toContain(
+          'Recuerda hacer la devolución en la app de Mercado Pago.',
+        );
         expect(voidDialog()!.textContent).not.toContain('Devuelve el efectivo');
       });
 
@@ -739,7 +765,9 @@ describe('SalePage', () => {
         expect(voidDialog()).toBeNull();
         expect(confirmation()).toBeNull();
         expect(toast()?.getAttribute('role')).toBe('status');
-        expect(toast()?.textContent).toContain('Venta anulada. Devuelve $8.000 en efectivo de la caja.');
+        expect(toast()?.textContent).toContain(
+          'Venta anulada. Devuelve $8.000 en efectivo de la caja.',
+        );
 
         await tap(toast()!.querySelector<HTMLButtonElement>('button[aria-label="Cerrar aviso"]')!);
         expect(toast()).toBeNull();
@@ -802,7 +830,9 @@ describe('SalePage', () => {
           );
         await fixture.whenStable();
 
-        expect(voidDialog()!.querySelector('[role="alert"]')?.textContent).toBe('La venta 501 no existe.');
+        expect(voidDialog()!.querySelector('[role="alert"]')?.textContent).toBe(
+          'La venta 501 no existe.',
+        );
       });
 
       it('shows a generic message without connection', async () => {
@@ -822,13 +852,24 @@ describe('SalePage', () => {
         ...CASH_SALE,
         id: 502,
         paymentMethod: 'MERCADO_PAGO',
-        lines: [{ variantId: 11, variantName: 'Normal', productId: 1, productName: 'Cerveza', quantity: 2 }],
+        lines: [
+          {
+            variantId: 11,
+            variantName: 'Normal',
+            productId: 1,
+            productName: 'Cerveza',
+            quantity: 2,
+          },
+        ],
         subtotal: 5000,
         tipAmount: 0,
         amountToCharge: 5000,
         createdAt: '2026-10-31T23:40:00Z',
       };
-      const VOIDED_SALE = voided({ ...CASH_SALE, id: 500, createdAt: '2026-10-31T23:05:00Z' }, 'monto mal digitado');
+      const VOIDED_SALE = voided(
+        { ...CASH_SALE, id: 500, createdAt: '2026-10-31T23:05:00Z' },
+        'monto mal digitado',
+      );
 
       it('opens from the header without touching the cart', async () => {
         await setup();
@@ -870,7 +911,9 @@ describe('SalePage', () => {
         await openRecent([MP_SALE, CASH_SALE]);
 
         await tap(rows()[0].querySelector<HTMLButtonElement>('button.void')!);
-        expect(voidDialog()!.querySelector('h2')?.textContent).toBe('¿Anular venta de $5.000 (Mercado Pago)?');
+        expect(voidDialog()!.querySelector('h2')?.textContent).toBe(
+          '¿Anular venta de $5.000 (Mercado Pago)?',
+        );
         await typeReason('cliente se arrepintió');
         await confirmVoid();
         const request = httpTesting.expectOne('/api/sales/502/void');
@@ -884,7 +927,9 @@ describe('SalePage', () => {
         expect(rows()[0].textContent).toContain('Motivo: cliente se arrepintió');
         expect(rows()[0].querySelector('button.void')).toBeNull();
         expect(rows()[1].classList).not.toContain('voided');
-        expect(toast()?.textContent).toContain('Venta anulada. Devuelve $5.000 en la app de Mercado Pago.');
+        expect(toast()?.textContent).toContain(
+          'Venta anulada. Devuelve $5.000 en la app de Mercado Pago.',
+        );
       });
 
       it('reloads the list on 409, as another phone may have voided the sale', async () => {
@@ -894,7 +939,11 @@ describe('SalePage', () => {
 
         await confirmVoid();
         httpTesting.expectOne('/api/sales/501/void').flush(
-          { title: 'Venta ya anulada', status: 409, detail: 'La venta 501 ya está anulada (a las 20:18).' },
+          {
+            title: 'Venta ya anulada',
+            status: 409,
+            detail: 'La venta 501 ya está anulada (a las 20:18).',
+          },
           { status: 409, statusText: 'Conflict' },
         );
         TestBed.tick();
@@ -969,7 +1018,10 @@ describe('SalePage', () => {
         TestBed.tick();
         httpTesting
           .expectOne('/api/sales')
-          .flush({ status: 500, detail: 'Error interno.' }, { status: 500, statusText: 'Server Error' });
+          .flush(
+            { status: 500, detail: 'Error interno.' },
+            { status: 500, statusText: 'Server Error' },
+          );
         await fixture.whenStable();
 
         expect(sheet()!.querySelector('[role="alert"]')?.textContent).toContain('Error interno.');

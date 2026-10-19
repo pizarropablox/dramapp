@@ -52,7 +52,9 @@ export class SalePage {
   protected readonly event = rxResource({ stream: () => this.eventService.current() });
   protected readonly menu = rxResource({ stream: () => this.productService.getMenu() });
 
-  protected readonly openEvent = computed(() => (this.event.hasValue() ? this.event.value() : null));
+  protected readonly openEvent = computed(() =>
+    this.event.hasValue() ? this.event.value() : null,
+  );
   protected readonly eventErrorMessage = computed(() => errorMessage(this.event.error()));
   protected readonly menuErrorMessage = computed(() => errorMessage(this.menu.error()));
 

@@ -114,7 +114,9 @@
         <p>Evento cerrado: los totales ya no cambian.</p>
       } @else if (refreshError(); as message) {
         <p class="stale">Sin actualizar hace {{ elapsed() }} · {{ message }}</p>
-        <button type="button" class="refresh" aria-label="Actualizar ahora" (click)="refreshNow()">↻</button>
+        <button type="button" class="refresh" aria-label="Actualizar ahora" (click)="refreshNow()">
+          ↻
+        </button>
       } @else {
         <p>Actualizado hace {{ elapsed() }}</p>
       }

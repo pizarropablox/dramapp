@@ -33,7 +33,9 @@ export const RECENT_SALES_LIMIT = 30;
             <button type="button" (click)="retry.emit()">Reintentar</button>
           </div>
         } @else if (sales().length === 0) {
-          <p class="note">{{ hasOpenEvent() ? 'Aún no hay ventas en este evento.' : 'No hay un evento abierto.' }}</p>
+          <p class="note">
+            {{ hasOpenEvent() ? 'Aún no hay ventas en este evento.' : 'No hay un evento abierto.' }}
+          </p>
         } @else {
           <ul>
             @for (sale of sales(); track sale.id) {
@@ -57,7 +59,12 @@ export const RECENT_SALES_LIMIT = 30;
                     <button
                       type="button"
                       class="void"
-                      [attr.aria-label]="'Anular venta de ' + (sale.amountToCharge | clp) + ' de las ' + time(sale.createdAt)"
+                      [attr.aria-label]="
+                        'Anular venta de ' +
+                        (sale.amountToCharge | clp) +
+                        ' de las ' +
+                        time(sale.createdAt)
+                      "
                       (click)="voidRequested.emit(sale)"
                     >
                       Anular

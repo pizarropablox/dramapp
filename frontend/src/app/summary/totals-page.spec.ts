@@ -38,7 +38,12 @@ const OPEN_SUMMARY: EventSummaryResponse = {
         { variantId: 12, variantName: '0,0', units: 1 },
       ],
     },
-    { productId: 12, productName: 'Red Bull', units: 4, variants: [{ variantId: 121, variantName: 'Única', units: 4 }] },
+    {
+      productId: 12,
+      productName: 'Red Bull',
+      units: 4,
+      variants: [{ variantId: 121, variantName: 'Única', units: 4 }],
+    },
     {
       productId: 9,
       productName: 'Jack Daniels',
@@ -139,9 +144,13 @@ describe('TotalsPage', () => {
       expect(text('.hours')).toBe('Abrió 23:00');
       expect(text('.top .state')).toBe('Abierto');
       expect(text('[data-method="MERCADO_PAGO"] .amount')).toBe('$31.500');
-      expect(text('[data-method="MERCADO_PAGO"] .detail')).toBe('2 ventas · Vendido $30.500 + Propina $1.000');
+      expect(text('[data-method="MERCADO_PAGO"] .detail')).toBe(
+        '2 ventas · Vendido $30.500 + Propina $1.000',
+      );
       expect(text('.total-row[data-method="EFECTIVO"] .amount')).toBe('$18.500');
-      expect(text('.total-row[data-method="EFECTIVO"] .detail')).toBe('1 venta · Vendido $18.000 + Propina $500');
+      expect(text('.total-row[data-method="EFECTIVO"] .detail')).toBe(
+        '1 venta · Vendido $18.000 + Propina $500',
+      );
       expect(text('.overall .amount')).toBe('$50.000');
       expect(text('.overall .detail')).toBe('Vendido $48.500 + Propina $1.500');
       expect(texts('.total-row .label')).toEqual(['Mercado Pago', 'Efectivo', 'Total']);
@@ -151,12 +160,12 @@ describe('TotalsPage', () => {
       setup();
 
       const products = Array.from(root().querySelectorAll<HTMLElement>('li.product'));
-      expect(products.map((product) => product.querySelector('.name')?.textContent?.trim())).toEqual([
-        'Cerveza',
-        'Red Bull',
-        'Jack Daniels',
-      ]);
-      expect(products.map((product) => product.querySelector('.count')?.textContent?.trim())).toEqual(['4', '4', '1']);
+      expect(
+        products.map((product) => product.querySelector('.name')?.textContent?.trim()),
+      ).toEqual(['Cerveza', 'Red Bull', 'Jack Daniels']);
+      expect(
+        products.map((product) => product.querySelector('.count')?.textContent?.trim()),
+      ).toEqual(['4', '4', '1']);
 
       const cerveza = products[0].querySelector('details')!;
       expect(cerveza.open).toBe(false);
@@ -192,7 +201,11 @@ describe('TotalsPage', () => {
         voided: {
           count: 0,
           amount: 0,
-          byPaymentMethod: OPEN_SUMMARY.voided.byPaymentMethod.map((method) => ({ ...method, count: 0, amount: 0 })),
+          byPaymentMethod: OPEN_SUMMARY.voided.byPaymentMethod.map((method) => ({
+            ...method,
+            count: 0,
+            amount: 0,
+          })),
         },
         products: [],
       });

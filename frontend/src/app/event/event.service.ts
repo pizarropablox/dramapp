@@ -9,12 +9,14 @@ export class EventService {
 
   /** The open event, or null when there is none (the backend answers 404). */
   current(): Observable<EventResponse | null> {
-    return this.http.get<EventResponse>('/api/events/current').pipe(
-      catchError((error: unknown) =>
-        error instanceof HttpErrorResponse && error.status === HttpStatusCode.NotFound
-          ? of(null)
-          : throwError(() => error),
-      ),
-    );
+    return this.http
+      .get<EventResponse>('/api/events/current')
+      .pipe(
+        catchError((error: unknown) =>
+          error instanceof HttpErrorResponse && error.status === HttpStatusCode.NotFound
+            ? of(null)
+            : throwError(() => error),
+        ),
+      );
   }
 }

@@ -19,8 +19,20 @@ describe('sale format', () => {
   it('summarizes lines, leaving out the single-variant name', () => {
     expect(
       saleSummary([
-        { variantId: 91, variantName: 'Original', productId: 9, productName: 'Jack Daniels', quantity: 2 },
-        { variantId: 121, variantName: 'Única', productId: 12, productName: 'Red Bull', quantity: 1 },
+        {
+          variantId: 91,
+          variantName: 'Original',
+          productId: 9,
+          productName: 'Jack Daniels',
+          quantity: 2,
+        },
+        {
+          variantId: 121,
+          variantName: 'Única',
+          productId: 12,
+          productName: 'Red Bull',
+          quantity: 1,
+        },
       ]),
     ).toBe('2× Jack Daniels Original · 1× Red Bull');
   });
@@ -34,7 +46,9 @@ describe('sale format', () => {
 
   it('reminds how to give the money back by payment method', () => {
     expect(REFUND_REMINDERS.EFECTIVO).toBe('Devuelve el efectivo de la caja.');
-    expect(REFUND_REMINDERS.MERCADO_PAGO).toBe('Recuerda hacer la devolución en la app de Mercado Pago.');
+    expect(REFUND_REMINDERS.MERCADO_PAGO).toBe(
+      'Recuerda hacer la devolución en la app de Mercado Pago.',
+    );
     expect(voidedNotice(SALE)).toBe('Venta anulada. Devuelve $8.000 en efectivo de la caja.');
     expect(voidedNotice({ ...SALE, paymentMethod: 'MERCADO_PAGO' })).toBe(
       'Venta anulada. Devuelve $8.000 en la app de Mercado Pago.',

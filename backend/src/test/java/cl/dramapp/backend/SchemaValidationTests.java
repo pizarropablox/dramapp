@@ -9,7 +9,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
-class SchemaValidationTests {
+class SchemaValidationTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private Environment environment;

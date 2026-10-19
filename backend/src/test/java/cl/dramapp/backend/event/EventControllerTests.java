@@ -12,13 +12,14 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import cl.dramapp.backend.PostgresIntegrationTest;
 import cl.dramapp.backend.product.ProductRepository;
 import cl.dramapp.backend.product.ProductVariant;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class EventControllerTests {
+class EventControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private MockMvcTester mvc;

@@ -12,7 +12,12 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
       <div class="variants">
         @for (variant of product().variants; track variant.id; let first = $first) {
           @if (first) {
-            <button #firstVariant type="button" class="variant primary" (click)="picked.emit(variant)">
+            <button
+              #firstVariant
+              type="button"
+              class="variant primary"
+              (click)="picked.emit(variant)"
+            >
               {{ variant.name }}
             </button>
           } @else {

@@ -21,7 +21,9 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
           <strong>{{ amountToCharge() | clp }}</strong>
         </p>
         @if (tipAmount() > 0) {
-          <p class="breakdown">Productos {{ subtotal() | clp }} + propina {{ tipAmount() | clp }}</p>
+          <p class="breakdown">
+            Productos {{ subtotal() | clp }} + propina {{ tipAmount() | clp }}
+          </p>
         }
       </div>
     </div>

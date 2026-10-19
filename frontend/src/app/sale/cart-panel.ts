@@ -1,4 +1,12 @@
-import { afterRenderEffect, Component, ElementRef, input, model, output, viewChild } from '@angular/core';
+import {
+  afterRenderEffect,
+  Component,
+  ElementRef,
+  input,
+  model,
+  output,
+  viewChild,
+} from '@angular/core';
 import { AddedLine, CartLine } from './cart-store';
 
 @Component({

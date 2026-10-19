@@ -11,11 +11,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
+import cl.dramapp.backend.PostgresIntegrationTest;
 import jakarta.persistence.EntityManager;
 
 @SpringBootTest
 @Transactional
-class ProductRepositoryTests {
+class ProductRepositoryTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private ProductRepository productRepository;

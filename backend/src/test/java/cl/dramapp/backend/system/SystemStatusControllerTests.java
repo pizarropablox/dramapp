@@ -10,9 +10,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
+import cl.dramapp.backend.PostgresIntegrationTest;
+
 @SpringBootTest
 @AutoConfigureMockMvc
-class SystemStatusControllerTests {
+class SystemStatusControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private MockMvcTester mvc;
