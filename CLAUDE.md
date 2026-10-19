@@ -53,6 +53,7 @@ dramapp/
 ├── docker-compose.yml  # PostgreSQL 17
 ├── .env.example        # plantilla de credenciales -> copiar a .env
 ├── .mcp.json           # MCP del Angular CLI apuntando a frontend/
+├── .github/workflows/  # CI de GitHub Actions (ci.yml)
 └── .vscode/            # launch/tasks compartidos de backend y frontend
 ```
 
@@ -67,40 +68,40 @@ docker compose down          # detener (los datos quedan en el volumen postgres-
 
 # Backend (desde backend/)
 ./mvnw spring-boot:run       # http://localhost:8080, health en /actuator/health (base dramapp)
-DB_NAME=dramapp_test ./mvnw test   # tests en la base aparte dramapp_test (ver abajo)
+./mvnw test                  # tests con Testcontainers: requiere Docker Desktop abierto (ver abajo)
+./mvnw verify                # lo mismo que corre el CI
 
 # Frontend (desde frontend/)
 npm install
 npm start                    # http://localhost:4200
-npm test                     # Vitest
+npm test                     # Vitest (en modo watch; una sola pasada: npm test -- --watch=false)
+npm run format               # formatea con Prettier
+npm run format:check         # verifica el formato (lo exige el CI)
 npm run build
 ```
 
-El backend lee `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`. Los valores por defecto (`localhost:5432/dramapp`, usuario y contraseña `dramapp`) coinciden con `.env.example`.
+El backend lee `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`. Los valores por defecto (`localhost:5432/dramapp`, usuario y contraseña `dramapp`) coinciden con `.env.example`. Solo las usa la app (`spring-boot:run`); los tests no.
 
-### Tests del backend en `dramapp_test`
+### Tests del backend con Testcontainers
 
-Los tests suponen tablas `sale` y `event` vacías, así que no se corren contra `dramapp` (que tiene los datos de las pruebas manuales), sino contra la base aparte `dramapp_test`, en el mismo contenedor. Flyway la migra sola al correr los tests.
+Los tests de integración heredan de `PostgresIntegrationTest`, que levanta un PostgreSQL 17 desechable en Docker (la misma imagen que `docker-compose.yml`) y lo conecta con `@ServiceConnection`; Flyway corre las migraciones en ese contenedor. No usan la base `dramapp` ni `DB_NAME`: basta `./mvnw test` (o `.\mvnw.cmd test`) con **Docker Desktop abierto**. No hace falta `docker compose up`.
 
-```bash
-# Una sola vez, con la base levantada: crear dramapp_test
-docker exec dramapp-postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE dramapp_test OWNER \"$POSTGRES_USER\";"'
+- Un solo contenedor para toda la corrida (campo estático): se paga su arranque una vez. Testcontainers lo borra al terminar.
+- Cada corrida parte solo con las migraciones (la carta oficial, sin eventos ni ventas), y cada test hace rollback con `@Transactional`.
+- Todo test nuevo que use la base debe extender `PostgresIntegrationTest`.
 
-# Linux / macOS / Git Bash (desde backend/): la variable solo vale para este comando
-DB_NAME=dramapp_test ./mvnw test
-```
+## Integración continua
 
-```powershell
-# PowerShell (desde backend/)
-$env:DB_NAME = 'dramapp_test'; .\mvnw.cmd test
-Remove-Item Env:DB_NAME
-```
+GitHub Actions (`.github/workflows/ci.yml`) corre en cada pull request y en cada push a `main`, con dos jobs en paralelo:
 
-**Ojo en PowerShell:** `$env:DB_NAME` queda activa en esa terminal hasta cerrarla o hacer `Remove-Item Env:DB_NAME`. Si no la quitas, un `.\mvnw.cmd spring-boot:run` posterior en la misma terminal se conecta a `dramapp_test` en vez de `dramapp`.
+- **backend**: Java 21 y `./mvnw -B verify` (Testcontainers usa el Docker del runner).
+- **frontend**: Node 24, `npm ci`, `npm run format:check`, `npm test -- --watch=false` y `npm run build`.
+
+Un PR solo se mergea con el CI en verde. Antes de abrirlo, correr `npm run format` en `frontend/`.
 
 ## Convenciones
 
-- **Ramas**: `tipo/DRAMA-N-descripcion-corta`, con tipo `feat`, `fix`, `chore`, `docs`, `test` o `refactor`. Ej: `feat/DRAMA-24-product-buttons`.
+- **Ramas**: `tipo/DRAMA-N-descripcion-corta`, con tipo `feat`, `fix`, `chore`, `docs`, `test`, `refactor` o `ci`. Ej: `feat/DRAMA-24-product-buttons`.
 - **Commits**: Conventional Commits en inglés, con la key de Jira al final. Ej: `feat(bar): add product buttons (DRAMA-24)`.
 - **Pull Requests**: todo entra a `main` por PR, y el título del PR incluye la key de Jira.
 - **Base de datos**: el esquema se cambia solo con migraciones Flyway (`ddl-auto` es `validate`, nunca `update`). Nunca modificar una migración ya mergeada; crear una nueva.

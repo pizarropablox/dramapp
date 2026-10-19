@@ -1,4 +1,7 @@
 # dramapp
+
+[![CI](https://github.com/pizarropablox/dramapp/actions/workflows/ci.yml/badge.svg)](https://github.com/pizarropablox/dramapp/actions/workflows/ci.yml)
+
 Event management app for Fiesta DRAMA: bar POS with Mercado Pago, voucher counting, ID-based entry and staff payroll.
 
 ## Cómo levantar el proyecto en local
@@ -38,3 +41,22 @@ npm start
 Abre http://localhost:4200. La pantalla "DRAMApp" muestra el estado del backend, la versión de PostgreSQL y la hora de la base. En desarrollo, las llamadas a `/api` se redirigen al backend mediante el proxy de Angular (`frontend/proxy.conf.json`).
 
 Para detener la base: `docker compose down` (los datos se conservan en el volumen `postgres-data`).
+
+## Tests
+
+Backend (JUnit con [Testcontainers](https://testcontainers.com/)): cada corrida levanta su propio PostgreSQL 17 desechable en Docker, así que solo necesitas **Docker Desktop abierto**; no usa la base local.
+
+```powershell
+cd backend
+.\mvnw.cmd verify
+```
+
+Frontend (Vitest y Prettier):
+
+```powershell
+cd frontend
+npm test -- --watch=false
+npm run format:check
+```
+
+GitHub Actions corre ambos, más el build del frontend, en cada pull request y en cada push a `main`.
