@@ -34,6 +34,9 @@ public class Sale {
 	 */
 	public static final long MAX_TIP = 10_000;
 
+	/** Longest void reason accepted, matching the void_reason column. */
+	public static final int MAX_VOID_REASON_LENGTH = 100;
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -63,6 +66,9 @@ public class Sale {
 	@Column(name = "voided_at")
 	private Instant voidedAt;
 
+	@Column(name = "void_reason", length = MAX_VOID_REASON_LENGTH)
+	private String voidReason;
+
 	@OneToMany(mappedBy = "sale", cascade = { CascadeType.PERSIST, CascadeType.MERGE })
 	@OrderBy("id ASC")
 	private List<SaleLine> lines = new ArrayList<>();
@@ -83,6 +89,25 @@ public class Sale {
 		SaleLine line = new SaleLine(this, variant, quantity);
 		lines.add(line);
 		return line;
+	}
+
+	/**
+	 * Voids the sale: it stays stored but no longer counts in the totals. There is no way back.
+	 * A blank reason is stored as null.
+	 *
+	 * @throws IllegalStateException if the sale is already voided
+	 */
+	public void voidSale(String reason) {
+		if (status == SaleStatus.VOIDED) {
+			throw new IllegalStateException("Sale " + id + " is already voided");
+		}
+		this.status = SaleStatus.VOIDED;
+		this.voidedAt = Instant.now();
+		this.voidReason = (reason == null || reason.isBlank()) ? null : reason.strip();
+	}
+
+	public boolean isVoided() {
+		return status == SaleStatus.VOIDED;
 	}
 
 	public Long getId() {
@@ -115,6 +140,10 @@ public class Sale {
 
 	public Instant getVoidedAt() {
 		return voidedAt;
+	}
+
+	public String getVoidReason() {
+		return voidReason;
 	}
 
 	public List<SaleLine> getLines() {

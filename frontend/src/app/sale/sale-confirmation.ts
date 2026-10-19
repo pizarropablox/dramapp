@@ -2,7 +2,10 @@ import { afterNextRender, Component, ElementRef, input, output, viewChild } from
 import { ClpPipe } from '../shared/clp';
 import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
 
-/** Shows the amount to charge (from the backend) until the cashier moves on to the next sale. */
+/**
+ * Shows the amount to charge (from the backend) until the cashier moves on to the next sale.
+ * The sale can also be voided from here, e.g. when the amount was mistyped in the Mercado Pago machine.
+ */
 @Component({
   selector: 'app-sale-confirmation',
   imports: [ClpPipe],
@@ -27,6 +30,7 @@ import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
         <span class="method">{{ labels[sale().paymentMethod] }}</span>
       </p>
       <button #next type="button" class="next" (click)="nextSale.emit()">Siguiente venta</button>
+      <button type="button" class="void" (click)="voidRequested.emit()">Anular esta venta</button>
     </div>
   `,
   styles: `
@@ -83,11 +87,24 @@ import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
       font-size: 1.25rem;
       font-weight: 700;
     }
+
+    /* Secondary on purpose: a plain link-like button that does not compete with "Siguiente venta". */
+    .void {
+      width: 100%;
+      margin-top: 0.5rem;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.95rem;
+      text-decoration: underline;
+      text-underline-offset: 0.2em;
+    }
   `,
 })
 export class SaleConfirmation {
   readonly sale = input.required<SaleResponse>();
   readonly nextSale = output<void>();
+  readonly voidRequested = output<void>();
 
   protected readonly labels = PAYMENT_METHOD_LABELS;
 
