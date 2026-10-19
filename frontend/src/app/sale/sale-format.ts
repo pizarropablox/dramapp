@@ -2,20 +2,7 @@ import { formatClp } from '../shared/clp';
 import { PAYMENT_METHOD_LABELS, PaymentMethod, SaleLineResponse, SaleResponse } from './sale';
 
 /** Name the menu gives the only variant of a product: not worth repeating in a summary. */
-const SINGLE_VARIANT_NAME = 'Única';
-
-/** The party is in San Bernardo: show Chilean time whatever the phone's settings. */
-const timeFormatter = new Intl.DateTimeFormat('es-CL', {
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-  timeZone: 'America/Santiago',
-});
-
-/** "2026-10-31T23:15:00Z" -> "20:15". */
-export function formatTime(iso: string): string {
-  return timeFormatter.format(new Date(iso));
-}
+export const SINGLE_VARIANT_NAME = 'Única';
 
 /** "2× Jack Daniels Original · 1× Red Bull". */
 export function saleSummary(lines: readonly SaleLineResponse[]): string {

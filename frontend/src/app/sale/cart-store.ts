@@ -1,4 +1,4 @@
-import { computed, Injectable, signal } from '@angular/core';
+import { computed, Service, signal } from '@angular/core';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
 import { calculateTotals } from './pricing';
 import { SaleLineRequest } from './sale';
@@ -14,8 +14,11 @@ export interface CartLine {
   quantity: number;
 }
 
-/** The order being built at the bar. One line per variant. Provided per sale screen. */
-@Injectable()
+/**
+ * The order being built at the bar. One line per variant.
+ * App-wide so the cart survives going to /totales and back; it is cleared once the sale is registered.
+ */
+@Service()
 export class CartStore {
   private readonly linesState = signal<readonly CartLine[]>([]);
 
