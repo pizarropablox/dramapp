@@ -8,4 +8,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
 	Optional<Event> findByStatus(EventStatus status);
 
+	/** The most recently closed event, when called with CLOSED. */
+	Optional<Event> findFirstByStatusOrderByClosedAtDescIdDesc(EventStatus status);
+
 }
