@@ -2,7 +2,10 @@
   max-width: 40rem;
   margin: 0 auto;
   padding: 2rem 1rem;
-  font-family: system-ui, sans-serif;
+}
+
+a {
+  color: var(--accent);
 }
 
 .status-list {
@@ -21,13 +24,13 @@
 }
 
 .up {
-  color: #146c2e;
+  color: var(--success);
   font-weight: 600;
 }
 
 .error {
   padding: 0.75rem 1rem;
   border-radius: 0.25rem;
-  background: #fde8e8;
-  color: #9b1c1c;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
