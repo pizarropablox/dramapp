@@ -1,7 +1,9 @@
 import { afterNextRender, Component, ElementRef, input, output, viewChild } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { ClpPipe } from '../shared/clp';
+import { formatTime } from '../shared/time';
 import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
-import { formatTime, saleSummary } from './sale-format';
+import { saleSummary } from './sale-format';
 
 /** What the backend returns at most when no limit is sent (SaleService.DEFAULT_RECENT_LIMIT). */
 export const RECENT_SALES_LIMIT = 30;
@@ -12,12 +14,16 @@ export const RECENT_SALES_LIMIT = 30;
  */
 @Component({
   selector: 'app-recent-sales-sheet',
-  imports: [ClpPipe],
+  imports: [ClpPipe, RouterLink],
   host: { '(document:keydown.escape)': 'closed.emit()' },
   template: `
     <div class="backdrop" (click)="closed.emit()"></div>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="recent-sales-title">
-      <h2 id="recent-sales-title">Últimas ventas</h2>
+      <div class="header">
+        <h2 id="recent-sales-title">Últimas ventas</h2>
+        <!-- The cart is app-wide, so leaving the sale screen keeps it. -->
+        <a class="totals" routerLink="/totales">Ver totales →</a>
+      </div>
       <div class="body">
         @if (loading()) {
           <p class="note" role="status">Cargando ventas…</p>
@@ -98,9 +104,26 @@ export const RECENT_SALES_LIMIT = 30;
       margin: 0;
     }
 
-    h2 {
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
       padding: 0 0.25rem;
+    }
+
+    h2 {
       font-size: 1.25rem;
+    }
+
+    .totals {
+      display: inline-flex;
+      align-items: center;
+      min-height: 2.75rem;
+      padding: 0 0.25rem;
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
     }
 
     .body {

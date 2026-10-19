@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import type { Mock } from 'vitest';
 import { EventResponse } from '../event/event';
 import { ProductResponse } from '../product/product';
@@ -69,7 +70,7 @@ describe('SalePage', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     await TestBed.configureTestingModule({
       imports: [SalePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents();
     httpTesting = TestBed.inject(HttpTestingController);
   });
@@ -928,6 +929,30 @@ describe('SalePage', () => {
         await openRecent([CASH_SALE]);
 
         expect(rows()).toHaveLength(1);
+      });
+
+      it('links to the totals', async () => {
+        await setup();
+
+        await openRecent([]);
+
+        const link = sheet()!.querySelector<HTMLAnchorElement>('a.totals')!;
+        expect(link.textContent?.trim()).toBe('Ver totales →');
+        expect(link.getAttribute('href')).toBe('/totales');
+      });
+
+      it('keeps the cart when the sale screen is left and opened again', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+
+        fixture.destroy();
+        await setup();
+
+        expect(cartLabels()).toEqual(['Red Bull']);
+        // Only the cart survives: payment method and tip start over.
+        expect(button('Efectivo').getAttribute('aria-pressed')).toBe('false');
+        expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
       });
 
       it('says so when there is no open event', async () => {

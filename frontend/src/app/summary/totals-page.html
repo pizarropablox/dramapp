@@ -1,0 +1,123 @@
+<div class="totals-page">
+  <header class="top">
+    <a class="back" routerLink="/">← Venta</a>
+    @if (summary()) {
+      @if (isOpen()) {
+        <span class="state open"><span class="open-dot" aria-hidden="true"></span>Abierto</span>
+      } @else {
+        <span class="state closed">Evento cerrado</span>
+      }
+    }
+  </header>
+
+  @if (loading()) {
+    <p class="note" role="status">Cargando totales…</p>
+  } @else if (loadError(); as message) {
+    <div class="banner danger" role="alert">
+      <p>{{ message }}</p>
+      <button type="button" (click)="retry()">Reintentar</button>
+    </div>
+  } @else if (summary(); as current) {
+    <main>
+      <section class="event" aria-labelledby="event-name">
+        <h1 id="event-name">{{ current.event.name }}</h1>
+        <p class="hours">
+          Abrió {{ time(current.event.openedAt) }}
+          @if (current.event.closedAt; as closedAt) {
+            · Cerró {{ time(closedAt) }}
+          }
+        </p>
+      </section>
+
+      <section class="money" aria-label="Totales">
+        @for (method of current.byPaymentMethod; track method.paymentMethod) {
+          <div class="total-row" [attr.data-method]="method.paymentMethod">
+            <p class="line">
+              <span class="label">{{ labels[method.paymentMethod] }}</span>
+              <strong class="amount">{{ method.total | clp }}</strong>
+            </p>
+            <p class="detail">
+              {{ method.salesCount }} {{ method.salesCount === 1 ? 'venta' : 'ventas' }} · Vendido
+              {{ method.sold | clp }} + Propina {{ method.tips | clp }}
+            </p>
+          </div>
+        }
+        <div class="total-row overall">
+          <p class="line">
+            <span class="label">Total</span>
+            <strong class="amount">{{ current.overall.total | clp }}</strong>
+          </p>
+          <p class="detail">
+            Vendido {{ current.overall.sold | clp }} + Propina {{ current.overall.tips | clp }}
+          </p>
+        </div>
+      </section>
+
+      <section class="units" aria-labelledby="units-title">
+        <h2 id="units-title">Unidades</h2>
+        @if (current.products.length === 0) {
+          <p class="note">Sin ventas todavía.</p>
+        } @else {
+          <ul>
+            @for (product of current.products; track product.productId) {
+              <li class="product">
+                @if (hasVariants(product)) {
+                  <details>
+                    <summary>
+                      <span class="name">{{ product.productName }}</span>
+                      <strong class="count">{{ product.units }}</strong>
+                    </summary>
+                    <ul class="variants">
+                      @for (variant of product.variants; track variant.variantId) {
+                        <li>
+                          <span class="name">{{ variant.variantName }}</span>
+                          <span class="count">{{ variant.units }}</span>
+                        </li>
+                      }
+                    </ul>
+                  </details>
+                } @else {
+                  <div class="row">
+                    <span class="name">{{ product.productName }}</span>
+                    <strong class="count">{{ product.units }}</strong>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <section class="control" aria-labelledby="control-title">
+        <h2 id="control-title">Control</h2>
+        <dl>
+          <div>
+            <dt>Ventas</dt>
+            <dd>{{ current.overall.salesCount }}</dd>
+          </div>
+          <div class="voided">
+            <dt>Anuladas</dt>
+            <dd>{{ current.voided.count }} · {{ current.voided.amount | clp }}</dd>
+          </div>
+          @for (voided of current.voided.byPaymentMethod; track voided.paymentMethod) {
+            <div class="sub" [attr.data-method]="voided.paymentMethod">
+              <dt>{{ labels[voided.paymentMethod] }}</dt>
+              <dd>{{ voided.count }} · {{ voided.amount | clp }}</dd>
+            </div>
+          }
+        </dl>
+      </section>
+    </main>
+
+    <footer class="status">
+      @if (!isOpen()) {
+        <p>Evento cerrado: los totales ya no cambian.</p>
+      } @else if (refreshError(); as message) {
+        <p class="stale">Sin actualizar hace {{ elapsed() }} · {{ message }}</p>
+        <button type="button" class="refresh" aria-label="Actualizar ahora" (click)="refreshNow()">↻</button>
+      } @else {
+        <p>Actualizado hace {{ elapsed() }}</p>
+      }
+    </footer>
+  }
+</div>

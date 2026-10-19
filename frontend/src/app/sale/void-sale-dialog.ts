@@ -1,6 +1,7 @@
 import { afterNextRender, Component, computed, ElementRef, input, output, signal, viewChild } from '@angular/core';
+import { formatTime } from '../shared/time';
 import { MAX_VOID_REASON_LENGTH, SaleResponse } from './sale';
-import { formatTime, REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
+import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
 
 /**
  * Bottom sheet confirming a void, which cannot be undone. "Volver" gets the focus so a stray tap

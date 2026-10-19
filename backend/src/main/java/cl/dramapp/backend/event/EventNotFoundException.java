@@ -18,6 +18,10 @@ public class EventNotFoundException extends ErrorResponseException {
 		return new EventNotFoundException("Sin evento abierto", "No hay un evento abierto.");
 	}
 
+	public static EventNotFoundException noEvents() {
+		return new EventNotFoundException("Sin eventos", "No hay eventos todavía.");
+	}
+
 	private static ProblemDetail problem(String title, String detail) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, detail);
 		problem.setTitle(title);

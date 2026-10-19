@@ -39,7 +39,6 @@ function normalize(text: string): string {
     VariantPicker,
     VoidSaleDialog,
   ],
-  providers: [CartStore],
   templateUrl: './sale-page.html',
   styleUrl: './sale-page.scss',
 })

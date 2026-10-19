@@ -1,5 +1,5 @@
 import { SaleResponse } from './sale';
-import { formatTime, REFUND_REMINDERS, saleSummary, voidedNotice, voidQuestion } from './sale-format';
+import { REFUND_REMINDERS, saleSummary, voidedNotice, voidQuestion } from './sale-format';
 
 const SALE: SaleResponse = {
   id: 501,
@@ -16,12 +16,6 @@ const SALE: SaleResponse = {
 };
 
 describe('sale format', () => {
-  it('formats the time in Chilean time, 24 hours', () => {
-    // Chile is UTC-3 on that date.
-    expect(formatTime('2026-10-31T23:15:00Z')).toBe('20:15');
-    expect(formatTime('2026-11-01T04:05:00Z')).toBe('01:05');
-  });
-
   it('summarizes lines, leaving out the single-variant name', () => {
     expect(
       saleSummary([

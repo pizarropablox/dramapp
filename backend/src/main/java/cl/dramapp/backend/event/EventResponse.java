@@ -6,7 +6,7 @@ import java.time.LocalDate;
 public record EventResponse(Long id, String name, LocalDate eventDate, EventStatus status, Instant openedAt,
 		Instant closedAt) {
 
-	static EventResponse from(Event event) {
+	public static EventResponse from(Event event) {
 		return new EventResponse(event.getId(), event.getName(), event.getEventDate(), event.getStatus(),
 				event.getOpenedAt(), event.getClosedAt());
 	}
