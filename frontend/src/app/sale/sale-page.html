@@ -55,6 +55,7 @@
     <app-cart-panel
       [lines]="cart.lines()"
       [itemCount]="cart.itemCount()"
+      [lastAdded]="cart.lastAdded()"
       [(expanded)]="cartExpanded"
       (incremented)="cart.increment($event)"
       (decremented)="cart.decrement($event)"
@@ -66,8 +67,10 @@
         <button type="button" aria-label="Cerrar aviso" (click)="saleError.set(null)">✕</button>
       </div>
     }
+    <app-tip-selector [(tip)]="tip" [disabled]="submitting()" />
     <app-checkout-bar
-      [total]="cart.totals().subtotal"
+      [subtotal]="cart.totals().subtotal"
+      [tipAmount]="tipAmount()"
       [savings]="cart.totals().savings"
       [(paymentMethod)]="paymentMethod"
       [canConfirm]="canConfirm()"

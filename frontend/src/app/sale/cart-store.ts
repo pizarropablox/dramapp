@@ -3,6 +3,11 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
 import { calculateTotals } from './pricing';
 import { SaleLineRequest } from './sale';
 
+/** A fresh object on every add, so adding the same variant twice still notifies. */
+export interface AddedLine {
+  variantId: number;
+}
+
 export interface CartLine {
   product: ProductResponse;
   variant: ProductVariantResponse;
@@ -15,6 +20,11 @@ export class CartStore {
   private readonly linesState = signal<readonly CartLine[]>([]);
 
   readonly lines = this.linesState.asReadonly();
+
+  private readonly lastAddedState = signal<AddedLine | null>(null);
+
+  /** The line touched by the latest add(), so the cart can scroll to it. */
+  readonly lastAdded = this.lastAddedState.asReadonly();
 
   readonly isEmpty = computed(() => this.linesState().length === 0);
 
@@ -49,6 +59,7 @@ export class CartStore {
     } else {
       this.linesState.update((lines) => [...lines, { product, variant, quantity: 1 }]);
     }
+    this.lastAddedState.set({ variantId: variant.id });
   }
 
   increment(variantId: number): void {
@@ -72,6 +83,7 @@ export class CartStore {
 
   clear(): void {
     this.linesState.set([]);
+    this.lastAddedState.set(null);
   }
 
   toRequestLines(): SaleLineRequest[] {

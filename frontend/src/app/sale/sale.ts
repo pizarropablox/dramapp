@@ -11,10 +11,15 @@ export interface SaleLineRequest {
   quantity: number;
 }
 
+/** Mirrors the backend's Sale.MAX_TIP: highest tip accepted, to catch typos. */
+export const MAX_TIP = 10_000;
+
 /** Mirrors the backend's RegisterSaleRequest. Prices are never sent: the backend computes them. */
 export interface RegisterSaleRequest {
   paymentMethod: PaymentMethod;
   lines: SaleLineRequest[];
+  /** Charged with the same payment method, kept apart from the products subtotal. */
+  tipAmount: number;
 }
 
 /** Mirrors the backend's SaleLineResponse. */
@@ -32,8 +37,10 @@ export interface SaleResponse {
   eventId: number;
   paymentMethod: PaymentMethod;
   lines: SaleLineResponse[];
+  /** Products total, promos applied. */
   subtotal: number;
-  tip: number;
-  total: number;
+  tipAmount: number;
+  /** subtotal + tipAmount. */
+  amountToCharge: number;
   createdAt: string;
 }

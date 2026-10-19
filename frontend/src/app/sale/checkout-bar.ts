@@ -1,4 +1,4 @@
-import { Component, input, model, output } from '@angular/core';
+import { Component, computed, input, model, output } from '@angular/core';
 import { ClpPipe } from '../shared/clp';
 import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
 
@@ -15,10 +15,15 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
           <p class="hint" id="confirm-hint">{{ hint() }}</p>
         }
       </div>
-      <p class="total" aria-live="polite">
-        <span class="total-label">Total</span>
-        <strong>{{ total() | clp }}</strong>
-      </p>
+      <div class="total" aria-live="polite">
+        <p class="amount">
+          <span class="total-label">Total</span>
+          <strong>{{ amountToCharge() | clp }}</strong>
+        </p>
+        @if (tipAmount() > 0) {
+          <p class="breakdown">Productos {{ subtotal() | clp }} + propina {{ tipAmount() | clp }}</p>
+        }
+      </div>
     </div>
     <div class="methods" role="group" aria-label="Medio de pago">
       @for (method of methods; track method) {
@@ -79,10 +84,20 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
     }
 
     .total {
-      display: flex;
       flex: none;
+      text-align: right;
+    }
+
+    .amount {
+      display: flex;
+      justify-content: flex-end;
       align-items: baseline;
       gap: 0.4rem;
+    }
+
+    .breakdown {
+      font-size: 0.8rem;
+      color: var(--muted);
     }
 
     .total-label {
@@ -102,7 +117,7 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
     }
 
     .method {
-      height: 3rem;
+      height: 2.75rem;
       font-size: 1.05rem;
       font-weight: 600;
     }
@@ -114,7 +129,7 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
     }
 
     .confirm {
-      height: 3.5rem;
+      height: 3.125rem;
       border: none;
       background: var(--success);
       color: var(--on-success);
@@ -132,7 +147,9 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
   `,
 })
 export class CheckoutBar {
-  readonly total = input.required<number>();
+  /** Products total, promos applied. */
+  readonly subtotal = input.required<number>();
+  readonly tipAmount = input(0);
   readonly savings = input.required<number>();
   readonly paymentMethod = model<PaymentMethod | null>(null);
   readonly canConfirm = input.required<boolean>();
@@ -143,4 +160,5 @@ export class CheckoutBar {
 
   protected readonly methods: readonly PaymentMethod[] = ['MERCADO_PAGO', 'EFECTIVO'];
   protected readonly labels = PAYMENT_METHOD_LABELS;
+  protected readonly amountToCharge = computed(() => this.subtotal() + this.tipAmount());
 }

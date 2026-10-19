@@ -93,6 +93,20 @@ describe('CartStore', () => {
     expect(cart.totals().subtotal).toBe(0);
   });
 
+  it('remembers the latest added line, notifying even for the same variant', () => {
+    expect(cart.lastAdded()).toBeNull();
+
+    cart.add(RED_BULL, RED_BULL_SINGLE);
+    const first = cart.lastAdded();
+    cart.add(RED_BULL, RED_BULL_SINGLE);
+
+    expect(cart.lastAdded()).toEqual({ variantId: RED_BULL_SINGLE.id });
+    expect(cart.lastAdded()).not.toBe(first);
+
+    cart.clear();
+    expect(cart.lastAdded()).toBeNull();
+  });
+
   it('totals apply promos across variants of the same product', () => {
     cart.add(JACK, ORIGINAL);
     cart.add(JACK, MANZANA);
