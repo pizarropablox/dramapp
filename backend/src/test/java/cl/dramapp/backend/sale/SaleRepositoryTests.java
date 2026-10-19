@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import cl.dramapp.backend.PostgresIntegrationTest;
 import cl.dramapp.backend.event.Event;
 import cl.dramapp.backend.event.EventRepository;
 import cl.dramapp.backend.product.Product;
@@ -20,7 +21,7 @@ import jakarta.persistence.EntityManager;
 
 @SpringBootTest
 @Transactional
-class SaleRepositoryTests {
+class SaleRepositoryTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private SaleRepository saleRepository;

@@ -12,9 +12,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
+import cl.dramapp.backend.PostgresIntegrationTest;
+
 @SpringBootTest
 @Transactional
-class OfficialMenuSeedTests {
+class OfficialMenuSeedTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private ProductRepository productRepository;

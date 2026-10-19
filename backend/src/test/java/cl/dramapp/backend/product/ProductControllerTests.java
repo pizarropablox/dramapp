@@ -11,10 +11,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.transaction.annotation.Transactional;
 
+import cl.dramapp.backend.PostgresIntegrationTest;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class ProductControllerTests {
+class ProductControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private MockMvcTester mvc;
