@@ -66,8 +66,8 @@ docker compose up -d
 docker compose down          # detener (los datos quedan en el volumen postgres-data)
 
 # Backend (desde backend/)
-./mvnw spring-boot:run       # http://localhost:8080, health en /actuator/health
-./mvnw test                  # requiere la base levantada
+./mvnw spring-boot:run       # http://localhost:8080, health en /actuator/health (base dramapp)
+DB_NAME=dramapp_test ./mvnw test   # tests en la base aparte dramapp_test (ver abajo)
 
 # Frontend (desde frontend/)
 npm install
@@ -77,6 +77,26 @@ npm run build
 ```
 
 El backend lee `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`. Los valores por defecto (`localhost:5432/dramapp`, usuario y contraseña `dramapp`) coinciden con `.env.example`.
+
+### Tests del backend en `dramapp_test`
+
+Los tests suponen tablas `sale` y `event` vacías, así que no se corren contra `dramapp` (que tiene los datos de las pruebas manuales), sino contra la base aparte `dramapp_test`, en el mismo contenedor. Flyway la migra sola al correr los tests.
+
+```bash
+# Una sola vez, con la base levantada: crear dramapp_test
+docker exec dramapp-postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE dramapp_test OWNER \"$POSTGRES_USER\";"'
+
+# Linux / macOS / Git Bash (desde backend/): la variable solo vale para este comando
+DB_NAME=dramapp_test ./mvnw test
+```
+
+```powershell
+# PowerShell (desde backend/)
+$env:DB_NAME = 'dramapp_test'; .\mvnw.cmd test
+Remove-Item Env:DB_NAME
+```
+
+**Ojo en PowerShell:** `$env:DB_NAME` queda activa en esa terminal hasta cerrarla o hacer `Remove-Item Env:DB_NAME`. Si no la quitas, un `.\mvnw.cmd spring-boot:run` posterior en la misma terminal se conecta a `dramapp_test` en vez de `dramapp`.
 
 ## Convenciones
 
