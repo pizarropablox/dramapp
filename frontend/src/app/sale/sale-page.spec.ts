@@ -151,6 +151,9 @@ describe('SalePage', () => {
       paymentMethod: 'MERCADO_PAGO',
       lines: [],
       createdAt: '2026-10-31T23:15:00Z',
+      status: 'ACTIVE',
+      voidedAt: null,
+      voidReason: null,
       ...amounts,
     };
   }
@@ -593,6 +596,364 @@ describe('SalePage', () => {
       await fixture.whenStable();
 
       expect(button('$500').getAttribute('aria-pressed')).toBe('true');
+    });
+  });
+
+  describe('voiding', () => {
+    const CASH_SALE: SaleResponse = {
+      id: 501,
+      eventId: OPEN_EVENT.id,
+      paymentMethod: 'EFECTIVO',
+      lines: [
+        { variantId: 91, variantName: 'Original', productId: 9, productName: 'Jack Daniels', quantity: 1 },
+        { variantId: 121, variantName: 'Única', productId: 12, productName: 'Red Bull', quantity: 1 },
+      ],
+      subtotal: 7000,
+      tipAmount: 1000,
+      amountToCharge: 8000,
+      createdAt: '2026-10-31T23:15:00Z',
+      status: 'ACTIVE',
+      voidedAt: null,
+      voidReason: null,
+    };
+
+    function voided(sale: SaleResponse, reason: string | null = null): SaleResponse {
+      return { ...sale, status: 'VOIDED', voidedAt: '2026-10-31T23:18:00Z', voidReason: reason };
+    }
+
+    /** Registers a sale and leaves the "Venta registrada" confirmation open with the backend's answer. */
+    async function registerSale(sale: SaleResponse = CASH_SALE): Promise<void> {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(button(sale.paymentMethod === 'EFECTIVO' ? 'Efectivo' : 'Mercado Pago'));
+      confirmButton().click();
+      TestBed.tick();
+      httpTesting.expectOne('/api/sales').flush(sale);
+      await fixture.whenStable();
+    }
+
+    function confirmation(): HTMLElement | null {
+      return root().querySelector('app-sale-confirmation [role="alertdialog"]');
+    }
+
+    function voidDialog(): HTMLElement | null {
+      return root().querySelector('app-void-sale-dialog [role="alertdialog"]');
+    }
+
+    function sheet(): HTMLElement | null {
+      return root().querySelector('app-recent-sales-sheet [role="dialog"]');
+    }
+
+    function toast(): HTMLElement | null {
+      return root().querySelector('.toast');
+    }
+
+    async function typeReason(reason: string): Promise<void> {
+      const input = voidDialog()!.querySelector<HTMLInputElement>('input')!;
+      input.value = reason;
+      input.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+    }
+
+    async function confirmVoid(): Promise<void> {
+      button('Anular venta').click();
+      TestBed.tick();
+    }
+
+    async function openRecent(sales: SaleResponse[]): Promise<void> {
+      // Not tap(): whenStable() would wait for the request this test has to answer.
+      button('Ventas').click();
+      TestBed.tick();
+      httpTesting.expectOne('/api/sales').flush(sales);
+      await fixture.whenStable();
+    }
+
+    function rows(): HTMLElement[] {
+      return Array.from(sheet()!.querySelectorAll<HTMLElement>('li.sale'));
+    }
+
+    describe('from the confirmation', () => {
+      it('offers a secondary "Anular esta venta" below "Siguiente venta"', async () => {
+        await registerSale();
+
+        const actions = buttons(confirmation()!).map((candidate) => candidate.textContent?.trim());
+        expect(actions).toEqual(['Siguiente venta', 'Anular esta venta']);
+        expect(document.activeElement?.textContent?.trim()).toBe('Siguiente venta');
+        expect(button('Anular esta venta').classList).toContain('void');
+      });
+
+      it('asks to confirm with the amount charged, tip included, and the cash reminder', async () => {
+        await registerSale();
+
+        await tap(button('Anular esta venta'));
+
+        expect(voidDialog()!.querySelector('h2')?.textContent).toBe('¿Anular venta de $8.000 (Efectivo)?');
+        expect(voidDialog()!.textContent).toContain('20:15 · 1× Jack Daniels Original · 1× Red Bull');
+        expect(voidDialog()!.textContent).toContain('Devuelve el efectivo de la caja.');
+        expect(voidDialog()!.textContent).not.toContain('Mercado Pago');
+        expect(document.activeElement?.textContent?.trim()).toBe('Volver');
+      });
+
+      it('reminds to refund in the Mercado Pago app for Mercado Pago sales', async () => {
+        await registerSale({ ...CASH_SALE, paymentMethod: 'MERCADO_PAGO' });
+
+        await tap(button('Anular esta venta'));
+
+        expect(voidDialog()!.querySelector('h2')?.textContent).toBe('¿Anular venta de $8.000 (Mercado Pago)?');
+        expect(voidDialog()!.textContent).toContain('Recuerda hacer la devolución en la app de Mercado Pago.');
+        expect(voidDialog()!.textContent).not.toContain('Devuelve el efectivo');
+      });
+
+      it('goes back without voiding', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+
+        await tap(button('Volver'));
+
+        expect(voidDialog()).toBeNull();
+        expect(confirmation()).not.toBeNull();
+        httpTesting.expectNone('/api/sales/501/void');
+      });
+
+      it('sends the reason once, closes the confirmation and confirms the void', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+        await typeReason('  monto mal digitado ');
+
+        const voidButton = button('Anular venta');
+        voidButton.click();
+        TestBed.tick();
+        voidButton.click();
+        TestBed.tick();
+
+        expect(voidButton.textContent?.trim()).toBe('Anulando…');
+        expect(voidButton.disabled).toBe(true);
+        expect(button('Volver').disabled).toBe(true);
+        const request = httpTesting.expectOne('/api/sales/501/void');
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({ reason: 'monto mal digitado' });
+        request.flush(voided(CASH_SALE, 'monto mal digitado'));
+        await fixture.whenStable();
+
+        expect(voidDialog()).toBeNull();
+        expect(confirmation()).toBeNull();
+        expect(toast()?.getAttribute('role')).toBe('status');
+        expect(toast()?.textContent).toContain('Venta anulada. Devuelve $8.000 en efectivo de la caja.');
+
+        await tap(toast()!.querySelector<HTMLButtonElement>('button[aria-label="Cerrar aviso"]')!);
+        expect(toast()).toBeNull();
+      });
+
+      it('sends a null reason when it is left empty', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+        await typeReason('   ');
+
+        await confirmVoid();
+
+        const request = httpTesting.expectOne('/api/sales/501/void');
+        expect(request.request.body).toEqual({ reason: null });
+        request.flush(voided(CASH_SALE));
+        await fixture.whenStable();
+      });
+
+      it('caps the reason at 100 characters', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+
+        expect(voidDialog()!.querySelector('input')?.getAttribute('maxlength')).toBe('100');
+      });
+
+      it('shows the backend detail on 409, keeps the dialog open and rechecks the event', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+
+        await confirmVoid();
+        httpTesting.expectOne('/api/sales/501/void').flush(
+          {
+            title: 'Evento cerrado',
+            status: 409,
+            detail: 'El evento DRAMA Octubre ya está cerrado: no se pueden anular sus ventas.',
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        TestBed.tick();
+        httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+        await fixture.whenStable();
+
+        expect(voidDialog()!.querySelector('[role="alert"]')?.textContent).toBe(
+          'El evento DRAMA Octubre ya está cerrado: no se pueden anular sus ventas.',
+        );
+        expect(button('Anular venta').disabled).toBe(false);
+        expect(toast()).toBeNull();
+      });
+
+      it('shows the backend detail on 404', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+
+        await confirmVoid();
+        httpTesting
+          .expectOne('/api/sales/501/void')
+          .flush(
+            { title: 'Venta no encontrada', status: 404, detail: 'La venta 501 no existe.' },
+            { status: 404, statusText: 'Not Found' },
+          );
+        await fixture.whenStable();
+
+        expect(voidDialog()!.querySelector('[role="alert"]')?.textContent).toBe('La venta 501 no existe.');
+      });
+
+      it('shows a generic message without connection', async () => {
+        await registerSale();
+        await tap(button('Anular esta venta'));
+
+        await confirmVoid();
+        httpTesting.expectOne('/api/sales/501/void').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        expect(voidDialog()!.textContent).toContain(NO_CONNECTION_MESSAGE);
+      });
+    });
+
+    describe('from the latest sales', () => {
+      const MP_SALE: SaleResponse = {
+        ...CASH_SALE,
+        id: 502,
+        paymentMethod: 'MERCADO_PAGO',
+        lines: [{ variantId: 11, variantName: 'Normal', productId: 1, productName: 'Cerveza', quantity: 2 }],
+        subtotal: 5000,
+        tipAmount: 0,
+        amountToCharge: 5000,
+        createdAt: '2026-10-31T23:40:00Z',
+      };
+      const VOIDED_SALE = voided({ ...CASH_SALE, id: 500, createdAt: '2026-10-31T23:05:00Z' }, 'monto mal digitado');
+
+      it('opens from the header without touching the cart', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+
+        await openRecent([]);
+
+        expect(sheet()!.textContent).toContain('Últimas ventas');
+        expect(sheet()!.textContent).toContain('Aún no hay ventas en este evento.');
+        await tap(button('Cerrar'));
+        expect(sheet()).toBeNull();
+        expect(cartLabels()).toEqual(['Red Bull']);
+      });
+
+      it('lists time, products, amount and payment method, with the voided ones marked', async () => {
+        await setup();
+
+        await openRecent([MP_SALE, CASH_SALE, VOIDED_SALE]);
+
+        const [mp, cash, voidedRow] = rows();
+        expect(mp.textContent).toContain('20:40');
+        expect(mp.textContent).toContain('Mercado Pago');
+        expect(mp.textContent).toContain('2× Cerveza Normal');
+        expect(mp.textContent).toContain('$5.000');
+        expect(mp.classList).not.toContain('voided');
+        expect(mp.querySelector('button.void')).not.toBeNull();
+
+        expect(cash.textContent).toContain('Efectivo');
+        expect(cash.textContent).toContain('$8.000');
+
+        expect(voidedRow.classList).toContain('voided');
+        expect(voidedRow.querySelector('.badge')?.textContent).toBe('Anulada 20:18');
+        expect(voidedRow.textContent).toContain('Motivo: monto mal digitado');
+        expect(voidedRow.querySelector('button.void')).toBeNull();
+      });
+
+      it('voids from the list and shows the row voided', async () => {
+        await setup();
+        await openRecent([MP_SALE, CASH_SALE]);
+
+        await tap(rows()[0].querySelector<HTMLButtonElement>('button.void')!);
+        expect(voidDialog()!.querySelector('h2')?.textContent).toBe('¿Anular venta de $5.000 (Mercado Pago)?');
+        await typeReason('cliente se arrepintió');
+        await confirmVoid();
+        const request = httpTesting.expectOne('/api/sales/502/void');
+        expect(request.request.body).toEqual({ reason: 'cliente se arrepintió' });
+        request.flush(voided(MP_SALE, 'cliente se arrepintió'));
+        await fixture.whenStable();
+
+        expect(voidDialog()).toBeNull();
+        expect(sheet()).not.toBeNull();
+        expect(rows()[0].classList).toContain('voided');
+        expect(rows()[0].textContent).toContain('Motivo: cliente se arrepintió');
+        expect(rows()[0].querySelector('button.void')).toBeNull();
+        expect(rows()[1].classList).not.toContain('voided');
+        expect(toast()?.textContent).toContain('Venta anulada. Devuelve $5.000 en la app de Mercado Pago.');
+      });
+
+      it('reloads the list on 409, as another phone may have voided the sale', async () => {
+        await setup();
+        await openRecent([CASH_SALE]);
+        await tap(rows()[0].querySelector<HTMLButtonElement>('button.void')!);
+
+        await confirmVoid();
+        httpTesting.expectOne('/api/sales/501/void').flush(
+          { title: 'Venta ya anulada', status: 409, detail: 'La venta 501 ya está anulada (a las 20:18).' },
+          { status: 409, statusText: 'Conflict' },
+        );
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush([voided(CASH_SALE)]);
+        httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+        await fixture.whenStable();
+
+        expect(voidDialog()!.querySelector('[role="alert"]')?.textContent).toBe(
+          'La venta 501 ya está anulada (a las 20:18).',
+        );
+        await tap(button('Volver'));
+        expect(rows()[0].classList).toContain('voided');
+      });
+
+      it('closes only the void dialog on Escape', async () => {
+        await setup();
+        await openRecent([CASH_SALE]);
+        await tap(rows()[0].querySelector<HTMLButtonElement>('button.void')!);
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await fixture.whenStable();
+
+        expect(voidDialog()).toBeNull();
+        expect(sheet()).not.toBeNull();
+      });
+
+      it('loads the list again every time it is opened', async () => {
+        await setup();
+        await openRecent([]);
+        await tap(button('Cerrar'));
+
+        await openRecent([CASH_SALE]);
+
+        expect(rows()).toHaveLength(1);
+      });
+
+      it('says so when there is no open event', async () => {
+        await setup(null);
+
+        await openRecent([]);
+
+        expect(sheet()!.textContent).toContain('No hay un evento abierto.');
+      });
+
+      it('shows the backend detail when the list fails and retries', async () => {
+        await setup();
+        button('Ventas').click();
+        TestBed.tick();
+        httpTesting
+          .expectOne('/api/sales')
+          .flush({ status: 500, detail: 'Error interno.' }, { status: 500, statusText: 'Server Error' });
+        await fixture.whenStable();
+
+        expect(sheet()!.querySelector('[role="alert"]')?.textContent).toContain('Error interno.');
+        button('Reintentar').click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush([CASH_SALE]);
+        await fixture.whenStable();
+        expect(rows()).toHaveLength(1);
+      });
     });
   });
 });

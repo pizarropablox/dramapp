@@ -1,35 +1,40 @@
 <div class="sale-page">
   <header class="top">
     <h1 class="visually-hidden">Venta en barra</h1>
+    <!-- Fixed height (one row): long names and banners wrap to at most 2 lines inside it. -->
     <div class="status">
       @if (event.isLoading()) {
-        <p class="event" role="status">Cargando evento…</p>
+        <p class="event" role="status"><span class="event-name">Cargando evento…</span></p>
       } @else if (event.error()) {
         <div class="banner danger" role="alert">
-          <p>No se pudo cargar el evento. {{ eventErrorMessage() }}</p>
-          <button type="button" (click)="event.reload()">Reintentar</button>
+          <p [title]="eventErrorMessage()">
+            No se pudo cargar el evento.<span class="visually-hidden"> {{ eventErrorMessage() }}</span>
+          </p>
+          <button type="button" class="retry" aria-label="Reintentar" (click)="event.reload()">↻</button>
         </div>
       } @else if (openEvent(); as current) {
         <p class="event">
-          <span class="event-name">{{ current.name }}</span>
-          <span class="pill">Abierto</span>
+          <span class="open-dot" aria-hidden="true"></span>
+          <span class="event-name" [title]="current.name">{{ current.name }}</span>
+          <span class="visually-hidden">(abierto)</span>
         </p>
       } @else {
         <div class="banner danger" role="alert">
           <p><strong>Sin evento abierto</strong></p>
-          <button type="button" (click)="event.reload()">Reintentar</button>
+          <button type="button" class="retry" aria-label="Reintentar" (click)="event.reload()">↻</button>
         </div>
       }
     </div>
     <input
       class="search"
       type="search"
-      placeholder="Buscar producto"
+      placeholder="Buscar"
       aria-label="Buscar producto"
       autocomplete="off"
       [value]="search()"
       (input)="onSearch($event)"
     />
+    <button type="button" class="recent" aria-haspopup="dialog" (click)="openRecent()">Ventas</button>
   </header>
 
   <main class="menu" aria-label="Carta">
@@ -90,5 +95,34 @@
 }
 
 @if (lastSale(); as sale) {
-  <app-sale-confirmation [sale]="sale" (nextSale)="lastSale.set(null)" />
+  <app-sale-confirmation [sale]="sale" (nextSale)="lastSale.set(null)" (voidRequested)="startVoid(sale)" />
+}
+
+@if (recentOpen()) {
+  <app-recent-sales-sheet
+    [sales]="recentSales.hasValue() ? recentSales.value() : []"
+    [loading]="recentSales.isLoading()"
+    [error]="recentSales.error() ? recentErrorMessage() : null"
+    [hasOpenEvent]="!!openEvent()"
+    (voidRequested)="startVoid($event)"
+    (retry)="recentSales.reload()"
+    (closed)="closeRecent()"
+  />
+}
+
+@if (voiding(); as sale) {
+  <app-void-sale-dialog
+    [sale]="sale"
+    [submitting]="voidSubmitting()"
+    [error]="voidError()"
+    (confirmed)="confirmVoid($event)"
+    (cancelled)="cancelVoid()"
+  />
+}
+
+@if (voidNotice(); as notice) {
+  <div class="toast" role="status">
+    <p>{{ notice }}</p>
+    <button type="button" aria-label="Cerrar aviso" (click)="voidNotice.set(null)">✕</button>
+  </div>
 }

@@ -31,6 +31,16 @@ export interface SaleLineResponse {
   quantity: number;
 }
 
+export type SaleStatus = 'ACTIVE' | 'VOIDED';
+
+/** Mirrors the backend's Sale.MAX_VOID_REASON_LENGTH. */
+export const MAX_VOID_REASON_LENGTH = 100;
+
+/** Mirrors the backend's VoidSaleRequest. */
+export interface VoidSaleRequest {
+  reason: string | null;
+}
+
 /** Mirrors the backend's SaleResponse. */
 export interface SaleResponse {
   id: number;
@@ -43,4 +53,9 @@ export interface SaleResponse {
   /** subtotal + tipAmount. */
   amountToCharge: number;
   createdAt: string;
+  status: SaleStatus;
+  /** Null unless status is VOIDED. */
+  voidedAt: string | null;
+  /** Optional even when voided. */
+  voidReason: string | null;
 }

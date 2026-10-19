@@ -13,8 +13,11 @@ import { ProductGrid } from './product-grid';
 import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
+import { RecentSalesSheet } from './recent-sales-sheet';
+import { voidedNotice } from './sale-format';
 import { NO_TIP, TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
+import { VoidSaleDialog } from './void-sale-dialog';
 
 function normalize(text: string): string {
   return text
@@ -26,7 +29,16 @@ function normalize(text: string): string {
 
 @Component({
   selector: 'app-sale-page',
-  imports: [CartPanel, CheckoutBar, ProductGrid, SaleConfirmation, TipSelector, VariantPicker],
+  imports: [
+    CartPanel,
+    CheckoutBar,
+    ProductGrid,
+    RecentSalesSheet,
+    SaleConfirmation,
+    TipSelector,
+    VariantPicker,
+    VoidSaleDialog,
+  ],
   providers: [CartStore],
   templateUrl: './sale-page.html',
   styleUrl: './sale-page.scss',
@@ -62,6 +74,21 @@ export class SalePage {
   protected readonly submitting = signal(false);
   protected readonly saleError = signal<string | null>(null);
   protected readonly lastSale = signal<SaleResponse | null>(null);
+
+  /** "Últimas ventas" is an overlay, not a route, so the cart survives opening it. */
+  protected readonly recentOpen = signal(false);
+  /** Idle while closed; loads again every time it is opened. */
+  protected readonly recentSales = rxResource({
+    params: () => (this.recentOpen() ? true : undefined),
+    stream: () => this.saleService.recent(),
+  });
+  protected readonly recentErrorMessage = computed(() => errorMessage(this.recentSales.error()));
+
+  /** The sale whose void is being confirmed, from the confirmation or from the list. */
+  protected readonly voiding = signal<SaleResponse | null>(null);
+  protected readonly voidSubmitting = signal(false);
+  protected readonly voidError = signal<string | null>(null);
+  protected readonly voidNotice = signal<string | null>(null);
 
   protected readonly blockReason = computed(() => {
     if (!this.openEvent()) {
@@ -111,6 +138,7 @@ export class SalePage {
       .subscribe({
         next: (sale) => {
           this.lastSale.set(sale);
+          this.voidNotice.set(null);
           this.cart.clear();
           this.paymentMethod.set(null);
           this.tip.set(NO_TIP);
@@ -121,6 +149,72 @@ export class SalePage {
           this.submitting.set(false);
           if (error instanceof HttpErrorResponse && error.status === HttpStatusCode.Conflict) {
             this.event.reload();
+          }
+        },
+      });
+  }
+
+  protected openRecent(): void {
+    this.voidNotice.set(null);
+    this.recentOpen.set(true);
+  }
+
+  protected closeRecent(): void {
+    // Escape reaches both sheets: only the void dialog on top should close.
+    if (!this.voiding()) {
+      this.recentOpen.set(false);
+    }
+  }
+
+  protected startVoid(sale: SaleResponse): void {
+    this.voidError.set(null);
+    this.voiding.set(sale);
+  }
+
+  protected cancelVoid(): void {
+    if (!this.voidSubmitting()) {
+      this.voiding.set(null);
+    }
+  }
+
+  protected confirmVoid(reason: string): void {
+    const sale = this.voiding();
+    if (!sale || this.voidSubmitting()) {
+      return;
+    }
+    this.voidSubmitting.set(true);
+    this.voidError.set(null);
+    this.saleService
+      .voidSale(sale.id, reason)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (voided) => {
+          this.voidSubmitting.set(false);
+          this.voiding.set(null);
+          if (this.lastSale()?.id === voided.id) {
+            this.lastSale.set(null);
+          }
+          if (this.recentSales.hasValue()) {
+            this.recentSales.update((sales) =>
+              sales?.map((candidate) => (candidate.id === voided.id ? voided : candidate)),
+            );
+          }
+          this.voidNotice.set(voidedNotice(voided));
+        },
+        error: (error: unknown) => {
+          this.voidSubmitting.set(false);
+          this.voidError.set(errorMessage(error));
+          // Another phone may have voided it, or the event may have been closed: show what is true now.
+          if (
+            error instanceof HttpErrorResponse &&
+            (error.status === HttpStatusCode.Conflict || error.status === HttpStatusCode.NotFound)
+          ) {
+            if (this.recentOpen()) {
+              this.recentSales.reload();
+            }
+            if (error.status === HttpStatusCode.Conflict) {
+              this.event.reload();
+            }
           }
         },
       });
