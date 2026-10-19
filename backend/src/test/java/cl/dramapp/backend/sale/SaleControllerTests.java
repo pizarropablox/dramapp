@@ -384,4 +384,285 @@ class SaleControllerTests {
 			.isEqualTo("tipAmount: La propina no puede superar $10.000.");
 	}
 
+	// --- Voiding ---
+
+	private Sale saleIn(Event event, PaymentMethod paymentMethod, long subtotal, long tip, ProductVariant variant,
+			int quantity) {
+		Sale sale = new Sale(event, paymentMethod, subtotal, tip);
+		sale.addLine(variant, quantity);
+		return saleRepository.saveAndFlush(sale);
+	}
+
+	private MvcTestResult voidSale(Long id, String json) {
+		var request = mvc.post().uri("/api/sales/{id}/void", id);
+		if (json != null) {
+			request.contentType(MediaType.APPLICATION_JSON).content(json);
+		}
+		return request.exchange();
+	}
+
+	private void assertConflict(MvcTestResult result, String title) {
+		assertThat(result).hasStatus(HttpStatus.CONFLICT)
+			.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+		assertThat(result).bodyJson().extractingPath("$.title").isEqualTo(title);
+	}
+
+	@Test
+	void voidsASaleWithAReasonAndReturnsIt() {
+		Event event = openEvent();
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 7000, 1000, variant("Red Bull", "Única"), 2);
+
+		var result = voidSale(sale.getId(), """
+				{"reason": "monto mal digitado"}""");
+
+		assertThat(result).hasStatus(HttpStatus.OK).hasContentTypeCompatibleWith(MediaType.APPLICATION_JSON);
+		assertThat(result).bodyJson().extractingPath("$.id").convertTo(Long.class).isEqualTo(sale.getId());
+		assertThat(result).bodyJson().extractingPath("$.status").isEqualTo("VOIDED");
+		assertThat(result).bodyJson().extractingPath("$.voidedAt").asString().isNotBlank();
+		assertThat(result).bodyJson().extractingPath("$.voidReason").isEqualTo("monto mal digitado");
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(8000);
+		assertThat(result).bodyJson().extractingPath("$.paymentMethod").isEqualTo("EFECTIVO");
+		assertThat(result).bodyJson().extractingPath("$.lines[0].productName").isEqualTo("Red Bull");
+	}
+
+	@Test
+	void aVoidedSaleIsKeptInTheDatabaseWithItsLines() {
+		Event event = openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		Sale sale = saleIn(event, PaymentMethod.MERCADO_PAGO, 7000, 500, redBull, 2);
+
+		assertThat(voidSale(sale.getId(), """
+				{"reason": "cliente se arrepintió"}""")).hasStatus(HttpStatus.OK);
+
+		entityManager.flush();
+		entityManager.clear();
+		Sale saved = saleRepository.findById(sale.getId()).orElseThrow();
+		assertThat(saved.getStatus()).isEqualTo(SaleStatus.VOIDED);
+		assertThat(saved.getVoidedAt()).isAfterOrEqualTo(saved.getCreatedAt());
+		assertThat(saved.getVoidReason()).isEqualTo("cliente se arrepintió");
+		assertThat(saved.getSubtotal()).isEqualTo(7000);
+		assertThat(saved.getTip()).isEqualTo(500);
+		assertThat(saved.getLines()).singleElement()
+			.extracting(line -> line.getVariant().getId(), SaleLine::getQuantity)
+			.containsExactly(redBull.getId(), 2);
+		assertThat(saleRepository.count()).isEqualTo(1);
+	}
+
+	@Test
+	void voidsWithoutBodyOrWithABlankReason() {
+		Event event = openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		Sale withoutBody = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+		Sale blankReason = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+
+		var first = voidSale(withoutBody.getId(), null);
+		var second = voidSale(blankReason.getId(), """
+				{"reason": "   "}""");
+
+		assertThat(first).hasStatus(HttpStatus.OK);
+		assertThat(first).bodyJson().extractingPath("$.status").isEqualTo("VOIDED");
+		assertThat(first).bodyJson().extractingPath("$.voidReason").isNull();
+		assertThat(second).hasStatus(HttpStatus.OK);
+		assertThat(second).bodyJson().extractingPath("$.voidReason").isNull();
+	}
+
+	@Test
+	void rejectsVoidingTwice() {
+		Event event = openEvent();
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, variant("Red Bull", "Única"), 1);
+		assertThat(voidSale(sale.getId(), """
+				{"reason": "primera"}""")).hasStatus(HttpStatus.OK);
+
+		var result = voidSale(sale.getId(), """
+				{"reason": "segunda"}""");
+
+		assertConflict(result, "Venta ya anulada");
+		assertThat(result).bodyJson().extractingPath("$.detail").asString()
+			.startsWith("La venta " + sale.getId() + " ya está anulada (a las ");
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(saleRepository.findById(sale.getId()).orElseThrow().getVoidReason()).isEqualTo("primera");
+	}
+
+	@Test
+	void rejectsVoidingAnUnknownSale() {
+		openEvent();
+
+		var result = voidSale(999_999_999L, null);
+
+		assertThat(result).hasStatus(HttpStatus.NOT_FOUND)
+			.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+		assertThat(result).bodyJson().extractingPath("$.title").isEqualTo("Venta no encontrada");
+		assertThat(result).bodyJson().extractingPath("$.detail").isEqualTo("La venta 999999999 no existe.");
+	}
+
+	@Test
+	void rejectsVoidingASaleOfAClosedEvent() {
+		Event event = openEvent();
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, variant("Red Bull", "Única"), 1);
+		event.close();
+		eventRepository.saveAndFlush(event);
+
+		var result = voidSale(sale.getId(), null);
+
+		assertConflict(result, "Evento cerrado");
+		assertThat(result).bodyJson().extractingPath("$.detail")
+			.isEqualTo("El evento DRAMA Octubre ya está cerrado: no se pueden anular sus ventas.");
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(saleRepository.findById(sale.getId()).orElseThrow().getStatus()).isEqualTo(SaleStatus.ACTIVE);
+	}
+
+	@Test
+	void aClosedEventWinsOverAnAlreadyVoidedSale() {
+		Event event = openEvent();
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, variant("Red Bull", "Única"), 1);
+		assertThat(voidSale(sale.getId(), null)).hasStatus(HttpStatus.OK);
+		event.close();
+		eventRepository.saveAndFlush(event);
+
+		assertConflict(voidSale(sale.getId(), null), "Evento cerrado");
+	}
+
+	@Test
+	void rejectsAReasonLongerThan100Characters() {
+		Event event = openEvent();
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, variant("Red Bull", "Única"), 1);
+
+		var result = voidSale(sale.getId(), """
+				{"reason": "%s"}""".formatted("x".repeat(101)));
+
+		assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
+		assertThat(result).bodyJson().extractingPath("$.errors").asArray().singleElement().asString()
+			.isEqualTo("reason: El motivo no puede superar los 100 caracteres.");
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(saleRepository.findById(sale.getId()).orElseThrow().getStatus()).isEqualTo(SaleStatus.ACTIVE);
+	}
+
+	@Test
+	void acceptsAReasonOfExactly100Characters() {
+		Event event = openEvent();
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, variant("Red Bull", "Única"), 1);
+		String reason = "x".repeat(100);
+
+		var result = voidSale(sale.getId(), """
+				{"reason": "%s"}""".formatted(reason));
+
+		assertThat(result).hasStatus(HttpStatus.OK);
+		assertThat(result).bodyJson().extractingPath("$.voidReason").isEqualTo(reason);
+	}
+
+	@Test
+	void aNewSaleIsActive() {
+		openEvent();
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}"""
+			.formatted(variant("Red Bull", "Única").getId()));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.status").isEqualTo("ACTIVE");
+		assertThat(result).bodyJson().extractingPath("$.voidedAt").isNull();
+		assertThat(result).bodyJson().extractingPath("$.voidReason").isNull();
+	}
+
+	// --- Recent sales ---
+
+	private MvcTestResult recent(String query) {
+		return mvc.get().uri("/api/sales" + query).exchange();
+	}
+
+	@Test
+	void listsTheOpenEventSalesNewestFirstWithTheVoidedOnesMarked() {
+		Event previous = openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		ProductVariant jackOriginal = variant("Jack Daniels", "Original");
+		saleIn(previous, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+		previous.close();
+		eventRepository.saveAndFlush(previous);
+
+		Event event = eventRepository.saveAndFlush(new Event("DRAMA Noviembre", LocalDate.of(2026, 11, 28)));
+		Sale first = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+		Sale second = saleIn(event, PaymentMethod.MERCADO_PAGO, 8500, 1000, jackOriginal, 1);
+		Sale third = saleIn(event, PaymentMethod.EFECTIVO, 7000, 0, redBull, 2);
+		assertThat(voidSale(second.getId(), """
+				{"reason": "monto mal digitado"}""")).hasStatus(HttpStatus.OK);
+		entityManager.flush();
+		entityManager.clear();
+
+		var result = recent("");
+
+		assertThat(result).hasStatus(HttpStatus.OK);
+		assertThat(result).bodyJson().extractingPath("$[*].id").asArray()
+			.containsExactly(third.getId().intValue(), second.getId().intValue(), first.getId().intValue());
+		assertThat(result).bodyJson().extractingPath("$[*].status").asArray()
+			.containsExactly("ACTIVE", "VOIDED", "ACTIVE");
+		assertThat(result).bodyJson().extractingPath("$[1].voidedAt").asString().isNotBlank();
+		assertThat(result).bodyJson().extractingPath("$[1].voidReason").isEqualTo("monto mal digitado");
+		assertThat(result).bodyJson().extractingPath("$[1].paymentMethod").isEqualTo("MERCADO_PAGO");
+		assertThat(result).bodyJson().extractingPath("$[1].subtotal").isEqualTo(8500);
+		assertThat(result).bodyJson().extractingPath("$[1].tipAmount").isEqualTo(1000);
+		assertThat(result).bodyJson().extractingPath("$[1].amountToCharge").isEqualTo(9500);
+		assertThat(result).bodyJson().extractingPath("$[1].createdAt").asString().isNotBlank();
+		assertThat(result).bodyJson().extractingPath("$[1].lines[0].productName").isEqualTo("Jack Daniels");
+		assertThat(result).bodyJson().extractingPath("$[1].lines[0].variantName").isEqualTo("Original");
+		assertThat(result).bodyJson().extractingPath("$[0].lines[0].quantity").isEqualTo(2);
+		assertThat(result).bodyJson().extractingPath("$[0].voidedAt").isNull();
+	}
+
+	@Test
+	void limitsTheRecentSales() {
+		Event event = openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		for (int i = 0; i < 3; i++) {
+			saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+		}
+		Sale newest = saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+
+		var result = recent("?limit=2");
+
+		assertThat(result).hasStatus(HttpStatus.OK);
+		assertThat(result).bodyJson().extractingPath("$.length()").isEqualTo(2);
+		assertThat(result).bodyJson().extractingPath("$[0].id").convertTo(Long.class).isEqualTo(newest.getId());
+	}
+
+	@Test
+	void listsAtMost30SalesByDefault() {
+		Event event = openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		for (int i = 0; i < 31; i++) {
+			saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, redBull, 1);
+		}
+
+		assertThat(recent("")).bodyJson().extractingPath("$.length()").isEqualTo(30);
+	}
+
+	@Test
+	void rejectsALimitOutOfRange() {
+		openEvent();
+
+		for (String limit : new String[] { "0", "101" }) {
+			var result = recent("?limit=" + limit);
+
+			assertThat(result).hasStatus(HttpStatus.BAD_REQUEST)
+				.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+			assertThat(result).bodyJson().extractingPath("$.errors").asArray().singleElement().asString()
+				.startsWith("limit: El límite");
+		}
+	}
+
+	@Test
+	void listsNothingWithoutAnOpenEvent() {
+		Event event = openEvent();
+		saleIn(event, PaymentMethod.EFECTIVO, 3500, 0, variant("Red Bull", "Única"), 1);
+		event.close();
+		eventRepository.saveAndFlush(event);
+
+		var result = recent("");
+
+		assertThat(result).hasStatus(HttpStatus.OK);
+		assertThat(result).bodyJson().isEqualTo("[]");
+	}
+
 }
