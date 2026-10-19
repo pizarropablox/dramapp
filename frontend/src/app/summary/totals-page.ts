@@ -55,7 +55,8 @@ export class TotalsPage {
 
   constructor() {
     const clock = setInterval(() => this.now.set(Date.now()), 1000);
-    const onVisibilityChange = () => (this.document.hidden ? this.stopRefresh() : this.refreshNow());
+    const onVisibilityChange = () =>
+      this.document.hidden ? this.stopRefresh() : this.refreshNow();
     this.document.addEventListener('visibilitychange', onVisibilityChange);
     inject(DestroyRef).onDestroy(() => {
       clearInterval(clock);
@@ -86,7 +87,9 @@ export class TotalsPage {
 
   private load(): void {
     const current = this.summary();
-    const source = current ? this.summaryService.byEvent(current.event.id) : this.summaryService.latest();
+    const source = current
+      ? this.summaryService.byEvent(current.event.id)
+      : this.summaryService.latest();
     this.request = source.subscribe({
       next: (summary) => {
         this.summary.set(summary);

@@ -13,7 +13,9 @@ import { ClpPipe } from '../shared/clp';
             <span class="name">{{ product.name }}</span>
             <span class="price">{{ product.unitPrice | clp }}</span>
             @if (product.promoQuantity !== null && product.promoPrice !== null) {
-              <span class="promo">Promo {{ product.promoQuantity }} × {{ product.promoPrice | clp }}</span>
+              <span class="promo"
+                >Promo {{ product.promoQuantity }} × {{ product.promoPrice | clp }}</span
+              >
             }
             @if (unitsByProduct().get(product.id); as units) {
               <span class="badge">

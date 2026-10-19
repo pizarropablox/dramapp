@@ -4,7 +4,8 @@
   max-width: 30rem;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: calc(0.375rem + env(safe-area-inset-top)) 0.75rem calc(1rem + env(safe-area-inset-bottom));
+  padding: calc(0.375rem + env(safe-area-inset-top)) 0.75rem
+    calc(1rem + env(safe-area-inset-bottom));
 }
 
 p,

@@ -22,7 +22,11 @@ export function errorMessage(error: unknown): string {
     if (error.status === 0) {
       return NO_CONNECTION_MESSAGE;
     }
-    if (isProblemDetail(error.error) && typeof error.error.detail === 'string' && error.error.detail) {
+    if (
+      isProblemDetail(error.error) &&
+      typeof error.error.detail === 'string' &&
+      error.error.detail
+    ) {
       return error.error.detail;
     }
   }

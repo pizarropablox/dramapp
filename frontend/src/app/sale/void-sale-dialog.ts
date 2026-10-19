@@ -1,4 +1,13 @@
-import { afterNextRender, Component, computed, ElementRef, input, output, signal, viewChild } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  ElementRef,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { formatTime } from '../shared/time';
 import { MAX_VOID_REASON_LENGTH, SaleResponse } from './sale';
 import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
@@ -40,8 +49,15 @@ import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
         <p class="error" role="alert">{{ message }}</p>
       }
       <div class="actions">
-        <button #back type="button" class="back" [disabled]="submitting()" (click)="cancel()">Volver</button>
-        <button type="button" class="confirm" [disabled]="submitting()" (click)="confirmed.emit(reason())">
+        <button #back type="button" class="back" [disabled]="submitting()" (click)="cancel()">
+          Volver
+        </button>
+        <button
+          type="button"
+          class="confirm"
+          [disabled]="submitting()"
+          (click)="confirmed.emit(reason())"
+        >
           {{ submitting() ? 'Anulando…' : 'Anular venta' }}
         </button>
       </div>

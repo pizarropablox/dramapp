@@ -1,7 +1,12 @@
 import { calculateTotals, PricedLine, ProductPrice, productSubtotal } from './pricing';
 
 const CERVEZA: ProductPrice = { productId: 1, unitPrice: 3000, promoQuantity: 2, promoPrice: 5000 };
-const PISCOLA: ProductPrice = { productId: 2, unitPrice: 5500, promoQuantity: 3, promoPrice: 13000 };
+const PISCOLA: ProductPrice = {
+  productId: 2,
+  unitPrice: 5500,
+  promoQuantity: 3,
+  promoPrice: 13000,
+};
 const TROPICAL_GIN: ProductPrice = {
   productId: 5,
   unitPrice: 8500,
@@ -14,7 +19,12 @@ const JACK_DANIELS: ProductPrice = {
   promoQuantity: 2,
   promoPrice: 15000,
 };
-const RED_BULL: ProductPrice = { productId: 12, unitPrice: 3500, promoQuantity: null, promoPrice: null };
+const RED_BULL: ProductPrice = {
+  productId: 12,
+  unitPrice: 3500,
+  promoQuantity: null,
+  promoPrice: null,
+};
 
 function line(price: ProductPrice, quantity: number): PricedLine {
   return { ...price, quantity };
