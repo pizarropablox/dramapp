@@ -1,6 +1,10 @@
 spring:
   application:
     name: backend
+  config:
+    # Local only: spring-boot:run (cwd backend/) reads the repo's .env, e.g. DRAMAPP_BARRA_PASSWORD.
+    # The production image has no .env; Render passes real environment variables.
+    import: optional:file:../.env[.properties]
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:dramapp}
     username: ${DB_USERNAME:dramapp}
@@ -28,3 +32,16 @@ management:
       # UptimeRobot use it so their pings don't keep Neon awake (/actuator/health includes the database).
       probes:
         enabled: true
+
+dramapp:
+  auth:
+    # Encoded passwords: {bcrypt}... in production (see README > Usuarios y contraseñas), {noop}... allowed locally.
+    # A user without a password cannot log in.
+    barra-password: ${DRAMAPP_BARRA_PASSWORD:}
+    admin-password: ${DRAMAPP_ADMIN_PASSWORD:}
+    # Base64, at least 256 bits. Locally it may be empty: a random key per run (sessions end on restart).
+    jwt-secret: ${DRAMAPP_JWT_SECRET:}
+    # Fixed, not renewed: one login before the party lasts until the next day.
+    session-ttl: 24h
+    secure-cookie: false
+    require-production-secrets: false
