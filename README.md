@@ -171,7 +171,15 @@ Pégalo en `DRAMAPP_JWT_SECRET`. No se usa `generateValue` en `render.yaml`: la 
 
 ### Abrir y cerrar un evento (admin)
 
-Mientras no haya pantalla para eventos, se hacen con la API (PowerShell). El login también devuelve el token, que se envía como `Authorization: Bearer`; así no hace falta cookie ni token CSRF:
+Desde la app, con el usuario `admin`, en **Totales**:
+
+- **Abrir evento** (arriba, cuando no hay uno abierto): pide el nombre, sugerido como "DRAMA <mes>" y ya seleccionado, así que basta escribir otro ("Prueba equipo") para reemplazarlo. La fecha se calcula sola en hora de Chile: lo que se abre antes del mediodía cuenta como la noche anterior.
+- **Cerrar evento** (al final de la página): la confirmación muestra el nombre, desde qué hora está abierto y el total vendido, y avisa que después no se pueden registrar ni anular ventas. Para habilitar "Cerrar evento" hay que marcar **"Sí, terminó la fiesta"**, y el botón no responde durante el primer segundo y medio. Después de cerrar quedan en pantalla los totales finales. Un evento cerrado no se puede reabrir.
+- `barra` no ve estos botones.
+
+La pantalla de Venta de los otros teléfonos se entera sola: revisa el evento cada 15 s cuando no hay uno abierto y cada 60 s cuando sí, solo mientras está visible. Después de 30 minutos sin evento deja de revisar (para no mantener despierta la base de Neon) y muestra "Toca ↻ para actualizar"; vuelve a revisar al tocar ↻ o al regresar a la pestaña. Si alguien alcanza a confirmar una venta justo después del cierre, ve "El evento está cerrado: esta venta no se registró" y conserva el carrito.
+
+**Alternativa sin la app (PowerShell),** por ejemplo si el frontend no está disponible. El login también devuelve el token, que se envía como `Authorization: Bearer`; así no hace falta cookie ni token CSRF:
 
 ```powershell
 $api = 'https://dramapp-backend.onrender.com/api'
