@@ -40,17 +40,21 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 | Base de datos | PostgreSQL 17 vía Docker Compose, migraciones con Flyway |
 | Frontend | Angular 22.2, TypeScript 6.0, SCSS, tests con Vitest 5 |
 | Tooling | Node >= 24.15 (en desarrollo: 24.20), npm 11.19 |
+| Producción | Render (backend Docker + frontend static site), Neon (PostgreSQL 17), UptimeRobot; planes gratis |
 
 ## Estructura
 
 ```
 dramapp/
 ├── backend/            # Spring Boot (cl.dramapp.backend)
+│   ├── Dockerfile                # imagen de producción (Render)
 │   └── src/main/resources/
 │       ├── application.yml       # datasource por variables de entorno
+│       ├── application-prod.yml  # perfil de producción (pool Hikari, Tomcat)
 │       └── db/migration/         # migraciones Flyway (V1__init.sql, ...)
 ├── frontend/           # Angular (tiene su propio CLAUDE.md con buenas prácticas de Angular)
 ├── docker-compose.yml  # PostgreSQL 17
+├── render.yaml         # Blueprint de Render: backend + frontend (deploy)
 ├── .env.example        # plantilla de credenciales -> copiar a .env
 ├── .mcp.json           # MCP del Angular CLI apuntando a frontend/
 ├── .github/workflows/  # CI de GitHub Actions (ci.yml)
@@ -98,6 +102,16 @@ GitHub Actions (`.github/workflows/ci.yml`) corre en cada pull request y en cada
 - **frontend**: Node 24, `npm ci`, `npm run format:check`, `npm test -- --watch=false` y `npm run build`.
 
 Un PR solo se mergea con el CI en verde. Antes de abrirlo, correr `npm run format` en `frontend/`.
+
+## Producción
+
+Detalle y pasos manuales en la sección "Deploy" del README.
+
+- Render despliega `main` solo después de que pasan los checks del CI. Las claves viven solo en los paneles de Render (variables `SPRING_DATASOURCE_*`), nunca en el repo.
+- El frontend llama a la API con rutas relativas `/api/...`: en producción las resuelve el rewrite del static site (igual que el proxy de Angular en desarrollo). No usar URLs absolutas ni CORS.
+- Health checks y monitoreo usan `/actuator/health/liveness`, que no consulta la base: así Neon puede suspenderse. No apuntarlos a `/actuator/health`.
+- El plan gratis de Render tiene 512 MB y 0,1 CPU: cuidar memoria y dependencias pesadas. La JVM se ajusta en el `Dockerfile`.
+- Los previews de PR usan el backend y la base de producción.
 
 ## Convenciones
 

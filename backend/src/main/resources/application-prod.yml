@@ -1,0 +1,19 @@
+# Production (Render free web service + Neon free). Activated with SPRING_PROFILES_ACTIVE=prod.
+# The datasource comes from SPRING_DATASOURCE_URL / _USERNAME / _PASSWORD (Neon's direct, non-pooled
+# connection with sslmode=require: Flyway's session-level advisory lock does not work through the pooler).
+spring:
+  datasource:
+    hikari:
+      # 2-3 phones at most. No idle connections are kept, so Neon can scale to zero between uses
+      # (its free plan has 100 CU-hours a month); reconnecting costs a few hundred ms.
+      maximum-pool-size: 5
+      minimum-idle: 0
+      idle-timeout: 120000
+
+server:
+  # Render stops the old instance on deploys: finish the requests in flight first.
+  shutdown: graceful
+  tomcat:
+    threads:
+      # 512 MB and 0.1 CPU: more threads would only cost memory.
+      max: 20

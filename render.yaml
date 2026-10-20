@@ -1,0 +1,56 @@
+# Render Blueprint: backend (Docker web service) + frontend (static site), both on the free plan.
+# Secrets use sync: false: Render asks for them when the Blueprint is created; no value lives in the repo.
+# The database is on Neon (not managed here). See README > Deploy.
+services:
+  - type: web
+    name: dramapp-backend
+    runtime: docker
+    plan: free
+    region: virginia # same AWS region as Neon (us-east-1)
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Doesn't touch the database, so Render's checks don't keep Neon awake.
+    healthCheckPath: /actuator/health/liveness
+    # Deploy main only after its CI checks (backend + frontend jobs) pass.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Neon's DIRECT connection (host without -pooler), as JDBC:
+      # jdbc:postgresql://<host>/<db>?sslmode=require&channelBinding=require
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+
+  - type: web
+    name: dramapp
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist/frontend/browser
+    autoDeployTrigger: checksPass
+    # PR previews (free for a free static site). They use the PRODUCTION backend and database.
+    previews:
+      generation: automatic
+    envVars:
+      - key: NODE_VERSION
+        value: 24.20.0
+    headers:
+      # index.html must be revalidated so phones pick up a new deploy; hashed assets still validate by ETag.
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      # Same origin for the browser (no CORS): the static site proxies the API to the backend.
+      # If Render gives the backend another subdomain, update this URL.
+      - type: rewrite
+        source: /api/*
+        destination: https://dramapp-backend.onrender.com/api/*
+      # SPA fallback: existing files win over rewrites, so reloading /totales serves index.html.
+      - type: rewrite
+        source: /*
+        destination: /index.html

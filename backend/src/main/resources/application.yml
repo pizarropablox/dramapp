@@ -13,8 +13,18 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+server:
+  # Render passes the port in PORT; 8080 locally.
+  port: ${PORT:8080}
+
 management:
   endpoints:
     web:
       exposure:
         include: health
+  endpoint:
+    health:
+      # /actuator/health/liveness answers without touching the database: Render's health check and
+      # UptimeRobot use it so their pings don't keep Neon awake (/actuator/health includes the database).
+      probes:
+        enabled: true
