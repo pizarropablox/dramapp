@@ -31,6 +31,15 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - La propina se guarda separada del total de productos.
 - Los productos y variantes se desactivan, nunca se borran.
 - Una venta anulada no suma en los totales, pero se conserva con su hora de anulación.
+- Toda la API exige sesión salvo login, logout y `/actuator/health/liveness`. Las sesiones duran 24 h fijas.
+
+## Seguridad (DRAMA-27)
+
+- Dos usuarios fijos, `barra` y `admin` (`ADMIN` hereda de `BARRA`). Sus claves (`{bcrypt}...`) y el secreto JWT vienen de variables de entorno (`DRAMAPP_BARRA_PASSWORD`, `DRAMAPP_ADMIN_PASSWORD`, `DRAMAPP_JWT_SECRET`); nunca en el repo. En local, `.env` con `{noop}...`.
+- JWT HS256 en una cookie `HttpOnly; SameSite=Strict; Path=/api` (y también se acepta `Authorization: Bearer`). Las peticiones con cookie exigen el token CSRF (`XSRF-TOKEN` → `X-XSRF-TOKEN`, Angular lo hace solo).
+- Los permisos viven en una sola tabla, `SecurityConfig`. Todo endpoint no listado queda **denegado**: un endpoint nuevo se agrega ahí y a `SecurityRulesTests`.
+- Tests: `@WithMockUser(roles = "BARRA" | "ADMIN")` en tests de controladores; `PostgresIntegrationTest` define las claves de test.
+- Frontend: `authGuard`/`adminGuard` en las rutas; ante un 401, `authInterceptor` vuelve al login sin recargar (el carrito se conserva).
 
 ## Stack
 
@@ -112,6 +121,7 @@ Detalle y pasos manuales en la sección "Deploy" del README.
 - Health checks y monitoreo usan `/actuator/health/liveness`, que no consulta la base: así Neon puede suspenderse. No apuntarlos a `/actuator/health`.
 - El plan gratis de Render tiene 512 MB y 0,1 CPU: cuidar memoria y dependencias pesadas. La JVM se ajusta en el `Dockerfile`.
 - Los previews de PR usan el backend y la base de producción.
+- El perfil `prod` no arranca sin `DRAMAPP_JWT_SECRET` o con claves que no sean `{bcrypt}`. Ver README > "Usuarios y contraseñas".
 
 ## Convenciones
 
