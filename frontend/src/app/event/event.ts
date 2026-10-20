@@ -9,3 +9,9 @@ export interface EventResponse {
   openedAt: string;
   closedAt: string | null;
 }
+
+/** Mirrors the backend's CreateEventRequest. eventDate: "2026-10-31". */
+export interface CreateEventRequest {
+  name: string;
+  eventDate: string;
+}

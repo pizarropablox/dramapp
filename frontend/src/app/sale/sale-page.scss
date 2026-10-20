@@ -159,6 +159,12 @@
   }
 }
 
+// "Toca ↻ para actualizar": on its own line under "Sin evento abierto" (the banner fits 2 lines).
+.hint {
+  display: block;
+  font-size: 0.8rem;
+}
+
 .recent {
   flex: none;
   min-width: 0;

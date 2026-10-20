@@ -2,7 +2,7 @@ import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, linkedSignal, signal } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
-import { EventService } from '../event/event.service';
+import { CurrentEventStore } from '../event/current-event-store';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { errorMessage } from '../shared/api-error';
@@ -19,6 +19,10 @@ import { voidedNotice } from './sale-format';
 import { NO_TIP, TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
 import { VoidSaleDialog } from './void-sale-dialog';
+
+/** POST /api/sales only answers 409 when there is no open event: admin closed it from another phone. */
+export const EVENT_CLOSED_MESSAGE =
+  'El evento está cerrado: esta venta no se registró. El carrito sigue aquí.';
 
 function normalize(text: string): string {
   return text
@@ -45,19 +49,17 @@ function normalize(text: string): string {
   styleUrl: './sale-page.scss',
 })
 export class SalePage {
-  private readonly eventService = inject(EventService);
+  protected readonly currentEvent = inject(CurrentEventStore);
   private readonly productService = inject(ProductService);
   private readonly saleService = inject(SaleService);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly cart = inject(CartStore);
 
-  protected readonly event = rxResource({ stream: () => this.eventService.current() });
   protected readonly menu = rxResource({ stream: () => this.productService.getMenu() });
 
-  protected readonly openEvent = computed(() =>
-    this.event.hasValue() ? this.event.value() : null,
-  );
-  protected readonly eventErrorMessage = computed(() => errorMessage(this.event.error()));
+  /** Checked again every 15 s (none) or 60 s (open) while this screen is shown: see CurrentEventStore. */
+  protected readonly openEvent = this.currentEvent.event;
+  protected readonly eventErrorMessage = computed(() => errorMessage(this.currentEvent.error()));
   protected readonly menuErrorMessage = computed(() => errorMessage(this.menu.error()));
 
   protected readonly search = signal('');
@@ -111,6 +113,11 @@ export class SalePage {
 
   protected readonly canConfirm = computed(() => !this.blockReason() && !this.submitting());
 
+  constructor() {
+    const stopWatching = this.currentEvent.watch();
+    this.destroyRef.onDestroy(stopWatching);
+  }
+
   protected onSearch(event: Event): void {
     this.search.set((event.target as HTMLInputElement).value);
   }
@@ -148,10 +155,12 @@ export class SalePage {
           this.submitting.set(false);
         },
         error: (error: unknown) => {
-          this.saleError.set(errorMessage(error));
           this.submitting.set(false);
           if (error instanceof HttpErrorResponse && error.status === HttpStatusCode.Conflict) {
-            this.event.reload();
+            this.saleError.set(EVENT_CLOSED_MESSAGE);
+            this.currentEvent.refresh();
+          } else {
+            this.saleError.set(errorMessage(error));
           }
         },
       });
@@ -216,7 +225,7 @@ export class SalePage {
               this.recentSales.reload();
             }
             if (error.status === HttpStatusCode.Conflict) {
-              this.event.reload();
+              this.currentEvent.refresh();
             }
           }
         },
