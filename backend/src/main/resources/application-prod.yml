@@ -11,9 +11,18 @@ spring:
       idle-timeout: 120000
 
 server:
+  # Render's proxies (and the static site's /api/* rewrite) add X-Forwarded-For/-Proto. Tomcat's RemoteIpValve takes
+  # the right-most address that is not an internal proxy, so a client cannot spoof its IP for the login limiter.
+  forward-headers-strategy: native
   # Render stops the old instance on deploys: finish the requests in flight first.
   shutdown: graceful
   tomcat:
     threads:
       # 512 MB and 0.1 CPU: more threads would only cost memory.
       max: 20
+
+dramapp:
+  auth:
+    secure-cookie: true
+    # Refuse to start without DRAMAPP_JWT_SECRET or with a password that is not a {bcrypt} hash.
+    require-production-secrets: true

@@ -1,6 +1,7 @@
 package cl.dramapp.backend;
 
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
@@ -11,8 +12,17 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * cached Spring context) shares it. No @Testcontainers/@Container on purpose, as they would restart it per class.
  * Testcontainers' Ryuk removes it when the JVM exits. Each run starts from the migrations only (the official menu,
  * no events or sales), and tests roll back with @Transactional.
+ * <p>
+ * Login users with test-only passwords, overriding anything a developer's .env sets. The JWT secret is empty: each
+ * Spring context signs with its own random key.
  */
+@TestPropertySource(properties = { "dramapp.auth.barra-password={noop}" + PostgresIntegrationTest.BARRA_PASSWORD,
+		"dramapp.auth.admin-password={noop}" + PostgresIntegrationTest.ADMIN_PASSWORD, "dramapp.auth.jwt-secret=" })
 public abstract class PostgresIntegrationTest {
+
+	public static final String BARRA_PASSWORD = "barra-test-password";
+
+	public static final String ADMIN_PASSWORD = "admin-test-password";
 
 	@ServiceConnection
 	static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");

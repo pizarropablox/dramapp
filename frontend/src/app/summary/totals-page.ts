@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { SessionBar } from '../auth/session-bar';
 import { Subscription } from 'rxjs';
 import { PAYMENT_METHOD_LABELS } from '../sale/sale';
 import { SINGLE_VARIANT_NAME } from '../sale/sale-format';
@@ -25,7 +26,7 @@ function formatElapsed(ms: number): string {
  */
 @Component({
   selector: 'app-totals-page',
-  imports: [ClpPipe, RouterLink],
+  imports: [ClpPipe, RouterLink, SessionBar],
   templateUrl: './totals-page.html',
   styleUrl: './totals-page.scss',
 })
