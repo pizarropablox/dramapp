@@ -3,16 +3,21 @@
     <h1 class="visually-hidden">Venta en barra</h1>
     <!-- Fixed height (one row): long names and banners wrap to at most 2 lines inside it. -->
     <div class="status">
-      @if (event.isLoading()) {
+      @if (currentEvent.loading()) {
         <p class="event" role="status"><span class="event-name">Cargando evento…</span></p>
-      } @else if (event.error()) {
+      } @else if (currentEvent.error()) {
         <div class="banner danger" role="alert">
           <p [title]="eventErrorMessage()">
             No se pudo cargar el evento.<span class="visually-hidden">
               {{ eventErrorMessage() }}</span
             >
           </p>
-          <button type="button" class="retry" aria-label="Reintentar" (click)="event.reload()">
+          <button
+            type="button"
+            class="retry"
+            aria-label="Reintentar"
+            (click)="currentEvent.refresh()"
+          >
             ↻
           </button>
         </div>
@@ -24,8 +29,18 @@
         </p>
       } @else {
         <div class="banner danger" role="alert">
-          <p><strong>Sin evento abierto</strong></p>
-          <button type="button" class="retry" aria-label="Reintentar" (click)="event.reload()">
+          <p>
+            <strong>Sin evento abierto</strong>
+            @if (currentEvent.paused()) {
+              <span class="hint">Toca ↻ para actualizar</span>
+            }
+          </p>
+          <button
+            type="button"
+            class="retry"
+            aria-label="Actualizar"
+            (click)="currentEvent.refresh()"
+          >
             ↻
           </button>
         </div>

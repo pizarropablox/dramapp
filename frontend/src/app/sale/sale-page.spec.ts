@@ -3,11 +3,16 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { Mock } from 'vitest';
+import {
+  POLL_WITH_EVENT_MS,
+  POLL_WITHOUT_EVENT_MS,
+  STOP_WITHOUT_EVENT_MS,
+} from '../event/current-event-store';
 import { EventResponse } from '../event/event';
 import { ProductResponse } from '../product/product';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { SaleResponse } from './sale';
-import { SalePage } from './sale-page';
+import { EVENT_CLOSED_MESSAGE, SalePage } from './sale-page';
 
 const OPEN_EVENT: EventResponse = {
   id: 7,
@@ -184,6 +189,82 @@ describe('SalePage', () => {
       expect(root().querySelector('[role="alert"]')?.textContent).toContain('Sin evento abierto');
       expect(confirmButton().disabled).toBe(true);
       expect(text()).toContain('Sin evento abierto: no se puede vender.');
+    });
+  });
+
+  describe('when admin opens or closes the event from another phone', () => {
+    beforeEach(() => vi.useFakeTimers());
+
+    afterEach(() => {
+      fixture.destroy();
+      vi.useRealTimers();
+    });
+
+    /** Like setup(), with fake timers: renders with TestBed.tick() instead of whenStable(). */
+    function start(event: EventResponse | null): void {
+      fixture = TestBed.createComponent(SalePage);
+      TestBed.tick();
+      answerEvent(event);
+      httpTesting.expectOne('/api/products').flush(MENU);
+      TestBed.tick();
+    }
+
+    function answerEvent(event: EventResponse | null): void {
+      const request = httpTesting.expectOne('/api/events/current');
+      if (event) {
+        request.flush(event);
+      } else {
+        request.flush(
+          { title: 'Sin evento abierto', status: 404, detail: 'No hay un evento abierto.' },
+          { status: 404, statusText: 'Not Found' },
+        );
+      }
+      TestBed.tick();
+    }
+
+    function advance(ms: number): void {
+      vi.advanceTimersByTime(ms);
+      TestBed.tick();
+    }
+
+    it('switches to the open event on its own, within 15 s', () => {
+      start(null);
+      expect(text()).toContain('Sin evento abierto');
+
+      advance(POLL_WITHOUT_EVENT_MS);
+      answerEvent(OPEN_EVENT);
+
+      expect(root().querySelector('.event-name')?.textContent).toBe('DRAMA Octubre');
+      expect(text()).not.toContain('Sin evento abierto');
+    });
+
+    it('notices within a minute that the event was closed, and blocks the sale', () => {
+      start(OPEN_EVENT);
+
+      advance(POLL_WITH_EVENT_MS);
+      answerEvent(null);
+
+      expect(text()).toContain('Sin evento abierto');
+      expect(text()).toContain('Sin evento abierto: no se puede vender.');
+    });
+
+    it('stops checking after 30 minutes without an event, and ↻ checks again', () => {
+      start(null);
+      for (let elapsed = 0; elapsed < STOP_WITHOUT_EVENT_MS; elapsed += POLL_WITHOUT_EVENT_MS) {
+        advance(POLL_WITHOUT_EVENT_MS);
+        answerEvent(null);
+      }
+
+      expect(text()).toContain('Toca ↻ para actualizar');
+      advance(STOP_WITHOUT_EVENT_MS);
+      httpTesting.expectNone('/api/events/current');
+
+      root().querySelector<HTMLButtonElement>('button[aria-label="Actualizar"]')!.click();
+      TestBed.tick();
+      answerEvent(OPEN_EVENT);
+
+      expect(root().querySelector('.event-name')?.textContent).toBe('DRAMA Octubre');
+      expect(text()).not.toContain('Toca ↻ para actualizar');
     });
   });
 
@@ -403,7 +484,7 @@ describe('SalePage', () => {
       expect(root().querySelector('[role="alertdialog"]')).toBeNull();
     });
 
-    it('shows the backend detail on error, keeps the cart and rechecks the event on 409', async () => {
+    it('says the event was closed on 409, keeps the cart and rechecks the event', async () => {
       await setup();
       await tap(productButton('Red Bull'));
       await tap(button('Efectivo'));
@@ -424,9 +505,8 @@ describe('SalePage', () => {
         .flush({ detail: 'No hay un evento abierto.' }, { status: 404, statusText: 'Not Found' });
       await fixture.whenStable();
 
-      expect(text()).toContain(
-        'No hay un evento abierto. Abre un evento antes de registrar ventas.',
-      );
+      // Not the backend's "Abre un evento…": barra cannot open one.
+      expect(text()).toContain(EVENT_CLOSED_MESSAGE);
       expect(cartLabels()).toEqual(['Red Bull']);
       expect(confirmButton().disabled).toBe(true);
       expect(text()).toContain('Sin evento abierto: no se puede vender.');
