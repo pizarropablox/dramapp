@@ -10,8 +10,24 @@
     }
   </header>
 
+  @if (notice(); as message) {
+    <p class="notice" role="status">{{ message }}</p>
+  }
+
+  @if (canOpen()) {
+    <button type="button" class="open-event" (click)="startOpen()">Abrir evento</button>
+  }
+
   @if (loading()) {
     <p class="note" role="status">Cargando totales…</p>
+  } @else if (noEvents()) {
+    <div class="empty">
+      <p>Aún no hay eventos.</p>
+      @if (!auth.isAdmin()) {
+        <p>Cuando el administrador abra uno, sus totales aparecen aquí.</p>
+        <button type="button" (click)="retry()">Reintentar</button>
+      }
+    </div>
   } @else if (loadError(); as message) {
     <div class="banner danger" role="alert">
       <p>{{ message }}</p>
@@ -110,19 +126,53 @@
     </main>
 
     <footer class="status">
-      @if (!isOpen()) {
-        <p>Evento cerrado: los totales ya no cambian.</p>
-      } @else if (refreshError(); as message) {
+      @if (refreshError(); as message) {
         <p class="stale">Sin actualizar hace {{ elapsed() }} · {{ message }}</p>
         <button type="button" class="refresh" aria-label="Actualizar ahora" (click)="refreshNow()">
           ↻
         </button>
+      } @else if (!isOpen()) {
+        <p>Evento cerrado: los totales ya no cambian.</p>
       } @else {
         <p>Actualizado hace {{ elapsed() }}</p>
       }
     </footer>
+
+    @if (canClose()) {
+      <!-- At the very end, away from everything else: closing is once a night and cannot be undone. -->
+      <section class="close-zone" aria-label="Cerrar el evento">
+        <button type="button" class="close-event" (click)="startClose()">Cerrar evento</button>
+        <p>Al terminar la fiesta. Después no se pueden registrar más ventas.</p>
+      </section>
+    }
   }
 
   <!-- Outside the summary: logging out must work even when the totals fail to load. -->
   <app-session-bar />
+
+  @if (opening(); as open) {
+    <app-open-event-dialog
+      [suggestedName]="open.suggestedName"
+      [eventDate]="open.eventDate"
+      [submitting]="openSubmitting()"
+      [error]="openError()"
+      (confirmed)="openEvent($event)"
+      (cancelled)="cancelOpen()"
+    />
+  }
+
+  @if (closing()) {
+    @if (summary(); as current) {
+      <app-close-event-dialog
+        [eventName]="current.event.name"
+        [openedAt]="current.event.openedAt"
+        [total]="current.overall.total"
+        [salesCount]="current.overall.salesCount"
+        [submitting]="closeSubmitting()"
+        [error]="closeError()"
+        (confirmed)="closeEvent()"
+        (cancelled)="cancelClose()"
+      />
+    }
+  }
 </div>

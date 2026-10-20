@@ -2,7 +2,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { Session } from '../auth/auth';
+import { AuthStore } from '../auth/auth-store';
+import { CurrentEventStore } from '../event/current-event-store';
+import { EventResponse } from '../event/event';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
+import { CLOSE_ARMING_MS } from './close-event-dialog';
 import { EventSummaryResponse } from './summary';
 import { REFRESH_INTERVAL_MS, TotalsPage } from './totals-page';
 
@@ -308,7 +313,7 @@ describe('TotalsPage', () => {
   });
 
   describe('errors', () => {
-    it('shows the backend detail when there are no events and retries', () => {
+    it('says there are no events yet and retries', () => {
       create();
       httpTesting
         .expectOne('/api/events/latest/summary')
@@ -318,11 +323,12 @@ describe('TotalsPage', () => {
         );
       TestBed.tick();
 
-      expect(text('[role="alert"]')).toContain('No hay eventos todavía.');
+      expect(text('.empty')).toContain('Aún no hay eventos.');
+      expect(root().querySelector('[role="alert"]')).toBeNull();
       advance(REFRESH_INTERVAL_MS * 3);
       httpTesting.expectNone('/api/events/latest/summary');
 
-      (root().querySelector('[role="alert"] button') as HTMLButtonElement).click();
+      (root().querySelector('.empty button') as HTMLButtonElement).click();
       TestBed.tick();
       httpTesting.expectOne('/api/events/latest/summary').flush(OPEN_SUMMARY);
       TestBed.tick();
@@ -371,6 +377,316 @@ describe('TotalsPage', () => {
       TestBed.tick();
 
       expect(status()).toBe('Actualizado hace 0 s');
+    });
+  });
+  describe('opening and closing the event', () => {
+    function signIn(role: Session['role']): void {
+      TestBed.inject(AuthStore).signedIn({
+        username: role.toLowerCase(),
+        role,
+        expiresAt: '2026-11-02T03:00:00Z',
+      });
+    }
+
+    function button(label: string): HTMLButtonElement | undefined {
+      return Array.from(root().querySelectorAll('button')).find(
+        (candidate) => candidate.textContent?.trim() === label,
+      );
+    }
+
+    function openButton(): HTMLButtonElement | null {
+      return root().querySelector('button.open-event');
+    }
+
+    function closeButton(): HTMLButtonElement | null {
+      return root().querySelector('button.close-event');
+    }
+
+    function noEventsYet(): void {
+      create();
+      httpTesting
+        .expectOne('/api/events/latest/summary')
+        .flush(
+          { title: 'Sin eventos', status: 404, detail: 'No hay eventos todavía.' },
+          { status: 404, statusText: 'Not Found' },
+        );
+      TestBed.tick();
+    }
+
+    const OPENED: EventResponse = {
+      id: 8,
+      name: 'DRAMA Octubre',
+      eventDate: '2026-10-23',
+      status: 'OPEN',
+      openedAt: '2026-10-24T01:30:00Z',
+      closedAt: null,
+    };
+
+    const NEW_SUMMARY: EventSummaryResponse = {
+      ...OPEN_SUMMARY,
+      event: OPENED,
+      byPaymentMethod: OPEN_SUMMARY.byPaymentMethod.map((method) => ({
+        ...method,
+        salesCount: 0,
+        sold: 0,
+        tips: 0,
+        total: 0,
+      })),
+      overall: { salesCount: 0, sold: 0, tips: 0, total: 0 },
+      products: [],
+    };
+
+    describe('barra', () => {
+      beforeEach(() => signIn('BARRA'));
+
+      it('never sees "Cerrar evento"', () => {
+        setup(OPEN_SUMMARY);
+
+        expect(closeButton()).toBeNull();
+        expect(openButton()).toBeNull();
+      });
+
+      it('never sees "Abrir evento", after a closed event or with no events at all', () => {
+        setup(CLOSED_SUMMARY);
+        expect(openButton()).toBeNull();
+        fixture.destroy();
+
+        noEventsYet();
+        expect(openButton()).toBeNull();
+        expect(text('.empty')).toContain('Cuando el administrador abra uno');
+      });
+    });
+
+    describe('admin', () => {
+      beforeEach(() => {
+        signIn('ADMIN');
+        // 22:30 on Friday 2026-10-23 in Chile.
+        vi.setSystemTime(new Date('2026-10-24T01:30:00Z'));
+      });
+
+      it('sees "Cerrar evento" at the very end while the event is open, and no "Abrir evento"', () => {
+        setup(OPEN_SUMMARY);
+
+        expect(openButton()).toBeNull();
+        expect(closeButton()).not.toBeNull();
+        // After the totals, units, control block and status line.
+        const zone = root().querySelector('.close-zone')!;
+        expect(
+          root().querySelector('footer.status')!.compareDocumentPosition(zone) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+
+      it('sees "Abrir evento" on top once the event is closed', () => {
+        setup(CLOSED_SUMMARY);
+
+        expect(closeButton()).toBeNull();
+        expect(openButton()).not.toBeNull();
+        expect(
+          openButton()!.compareDocumentPosition(root().querySelector('main')!) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+
+      it('sees "Abrir evento" when there are no events yet', () => {
+        noEventsYet();
+
+        expect(text('.empty')).toContain('Aún no hay eventos.');
+        expect(openButton()).not.toBeNull();
+      });
+
+      describe('opening', () => {
+        async function openWith(
+          name?: string,
+        ): Promise<ReturnType<HttpTestingController['expectOne']>> {
+          openButton()!.click();
+          TestBed.tick();
+          if (name !== undefined) {
+            const input = root().querySelector<HTMLInputElement>('[role="dialog"] input')!;
+            input.value = name;
+            input.dispatchEvent(new Event('input'));
+          }
+          root().querySelector<HTMLButtonElement>('[role="dialog"] button[type="submit"]')!.click();
+          return vi.waitFor(() => httpTesting.expectOne('/api/events'));
+        }
+
+        it('suggests the name from the date and opens it', async () => {
+          setup(CLOSED_SUMMARY);
+          openButton()!.click();
+          TestBed.tick();
+          expect(root().querySelector<HTMLInputElement>('[role="dialog"] input')!.value).toBe(
+            'DRAMA Octubre',
+          );
+          expect(text('[role="dialog"]')).toContain('Fecha: viernes 23-10');
+          button('Cancelar')!.click();
+          TestBed.tick();
+
+          const request = await openWith();
+          expect(request.request.body).toEqual({ name: 'DRAMA Octubre', eventDate: '2026-10-23' });
+        });
+
+        it('moves to the new event, says so and starts refreshing it', async () => {
+          setup(CLOSED_SUMMARY);
+
+          (await openWith('Prueba equipo')).flush({ ...OPENED, name: 'Prueba equipo' });
+          TestBed.tick();
+          httpTesting
+            .expectOne('/api/events/latest/summary')
+            .flush({ ...NEW_SUMMARY, event: { ...OPENED, name: 'Prueba equipo' } });
+          TestBed.tick();
+
+          expect(root().querySelector('[role="dialog"]')).toBeNull();
+          expect(text('.notice')).toBe('Evento "Prueba equipo" abierto. Ya se puede vender.');
+          expect(text('h1')).toBe('Prueba equipo');
+          expect(text('.top .state')).toBe('Abierto');
+          expect(openButton()).toBeNull();
+          expect(closeButton()).not.toBeNull();
+          // The sale screen of this phone already knows.
+          expect(TestBed.inject(CurrentEventStore).event()?.name).toBe('Prueba equipo');
+
+          advance(REFRESH_INTERVAL_MS);
+          httpTesting.expectOne('/api/events/8/summary').flush(NEW_SUMMARY);
+        });
+
+        it('shows the event another phone already opened', async () => {
+          setup(CLOSED_SUMMARY);
+
+          (await openWith()).flush(
+            {
+              title: 'Evento ya abierto',
+              status: 409,
+              detail: 'Ya hay un evento abierto (DRAMA Octubre). Ciérralo antes de crear otro.',
+            },
+            { status: 409, statusText: 'Conflict' },
+          );
+          TestBed.tick();
+          httpTesting.expectOne('/api/events/latest/summary').flush(OPEN_SUMMARY);
+          TestBed.tick();
+
+          expect(root().querySelector('[role="dialog"]')).toBeNull();
+          expect(text('.notice')).toBe(
+            'Ya hay un evento abierto (DRAMA Octubre). Ciérralo antes de crear otro.',
+          );
+          expect(text('.top .state')).toBe('Abierto');
+        });
+
+        it('keeps the sheet open without connection, to try again', async () => {
+          noEventsYet();
+
+          (await openWith()).error(new ProgressEvent('error'));
+          TestBed.tick();
+
+          expect(text('[role="dialog"] [role="alert"]')).toContain(NO_CONNECTION_MESSAGE);
+          expect(
+            root().querySelector<HTMLButtonElement>('[role="dialog"] button[type="submit"]')!
+              .disabled,
+          ).toBe(false);
+        });
+      });
+
+      describe('closing', () => {
+        function dialogCloseButton(): HTMLButtonElement {
+          return root().querySelector<HTMLButtonElement>('[role="alertdialog"] button.confirm')!;
+        }
+
+        /** Opens the confirmation, which reloads the totals so it shows the current ones. */
+        function startClosing(total = 62000): void {
+          closeButton()!.click();
+          TestBed.tick();
+          refreshRequest().flush(withTotal(total));
+          TestBed.tick();
+        }
+
+        function confirmClose(): ReturnType<HttpTestingController['expectOne']> {
+          root()
+            .querySelector<HTMLInputElement>('[role="alertdialog"] input[type="checkbox"]')!
+            .click();
+          advance(CLOSE_ARMING_MS);
+          dialogCloseButton().click();
+          TestBed.tick();
+          return httpTesting.expectOne('/api/events/7/close');
+        }
+
+        it('confirms with the name and the current total', () => {
+          setup();
+
+          startClosing(62000);
+
+          expect(text('[role="alertdialog"] h2')).toBe('¿Realmente deseas cerrar "DRAMA Octubre"?');
+          expect(text('[role="alertdialog"] .sold strong')).toBe('$62.000');
+          expect(text('[role="alertdialog"]')).toContain('3 ventas');
+        });
+
+        it('goes back without closing anything', () => {
+          setup();
+          startClosing();
+
+          button('Volver')!.click();
+          TestBed.tick();
+
+          expect(root().querySelector('[role="alertdialog"]')).toBeNull();
+          httpTesting.expectNone('/api/events/7/close');
+          expect(text('.top .state')).toBe('Abierto');
+        });
+
+        it('closes, shows the final totals and offers to open the next one', () => {
+          setup();
+          startClosing();
+
+          confirmClose().flush({
+            ...OPEN_SUMMARY.event,
+            status: 'CLOSED',
+            closedAt: '2026-11-01T08:31:00Z',
+          });
+          TestBed.tick();
+          refreshRequest().flush(CLOSED_SUMMARY);
+          TestBed.tick();
+
+          expect(root().querySelector('[role="alertdialog"]')).toBeNull();
+          expect(text('.notice')).toBe(
+            'Evento cerrado a las 05:31. Estos son los totales finales.',
+          );
+          expect(text('.top .state')).toBe('Evento cerrado');
+          expect(closeButton()).toBeNull();
+          expect(openButton()).not.toBeNull();
+          expect(TestBed.inject(CurrentEventStore).event()).toBeNull();
+          advance(REFRESH_INTERVAL_MS * 6);
+          httpTesting.expectNone('/api/events/7/summary');
+        });
+
+        it('shows it closed when another phone already closed it', () => {
+          setup();
+          startClosing();
+
+          confirmClose().flush(
+            {
+              title: 'Evento ya cerrado',
+              status: 409,
+              detail: 'El evento 7 (DRAMA Octubre) ya está cerrado.',
+            },
+            { status: 409, statusText: 'Conflict' },
+          );
+          TestBed.tick();
+          refreshRequest().flush(CLOSED_SUMMARY);
+          TestBed.tick();
+
+          expect(root().querySelector('[role="alertdialog"]')).toBeNull();
+          expect(text('.notice')).toBe('El evento 7 (DRAMA Octubre) ya está cerrado.');
+          expect(text('.top .state')).toBe('Evento cerrado');
+        });
+
+        it('keeps the confirmation open without connection, to try again', () => {
+          setup();
+          startClosing();
+
+          confirmClose().error(new ProgressEvent('error'));
+          TestBed.tick();
+
+          expect(text('[role="alertdialog"] [role="alert"]')).toContain(NO_CONNECTION_MESSAGE);
+          expect(dialogCloseButton().disabled).toBe(false);
+          expect(text('.top .state')).toBe('Abierto');
+        });
+      });
     });
   });
 });
