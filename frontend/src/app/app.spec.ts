@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
 import { routes } from './app.routes';
+import { adminGuard, authGuard, guestGuard } from './auth/auth.guard';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -21,5 +22,14 @@ describe('App', () => {
     expect(routes.find((route) => route.path === 'estado')?.title).toBe(
       'Estado del sistema · DRAMApp',
     );
+  });
+
+  it('should protect every screen but the login', () => {
+    const guardsOf = (path: string) => routes.find((route) => route.path === path)?.canActivate;
+
+    expect(guardsOf('login')).toEqual([guestGuard]);
+    expect(guardsOf('')).toEqual([authGuard]);
+    expect(guardsOf('totales')).toEqual([authGuard]);
+    expect(guardsOf('estado')).toEqual([adminGuard]);
   });
 });

@@ -1,6 +1,7 @@
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, linkedSignal, signal } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { EventService } from '../event/event.service';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
@@ -35,6 +36,7 @@ function normalize(text: string): string {
     ProductGrid,
     RecentSalesSheet,
     SaleConfirmation,
+    SessionExpiryNotice,
     TipSelector,
     VariantPicker,
     VoidSaleDialog,

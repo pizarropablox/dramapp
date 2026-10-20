@@ -1,0 +1,71 @@
+<main class="login-page">
+  <header>
+    <h1>DRAMApp</h1>
+    <p class="subtitle">Venta en barra · Fiesta DRAMA</p>
+  </header>
+
+  @if (sessionExpired()) {
+    <div class="notice" role="status">
+      <p><strong>Tu sesión expiró.</strong> Inicia sesión de nuevo.</p>
+      @if (keepsCart()) {
+        <p>El carrito sigue guardado: al entrar vuelves a la venta.</p>
+      }
+    </div>
+  }
+
+  <form novalidate (submit)="onSubmit($event)">
+    <fieldset [disabled]="submitting()">
+      <legend class="visually-hidden">Iniciar sesión</legend>
+
+      <label class="field">
+        <span>Usuario</span>
+        <input
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          enterkeyhint="next"
+          [attr.aria-invalid]="usernameError() !== null"
+          [attr.aria-describedby]="usernameError() ? 'username-error' : null"
+          [formField]="loginForm.username"
+        />
+      </label>
+      @if (usernameError(); as message) {
+        <p id="username-error" class="field-error">{{ message }}</p>
+      }
+
+      <label class="field" for="password">
+        <span>Contraseña</span>
+      </label>
+      <div class="password">
+        <input
+          id="password"
+          autocomplete="current-password"
+          enterkeyhint="go"
+          [type]="showPassword() ? 'text' : 'password'"
+          [attr.aria-invalid]="passwordError() !== null"
+          [attr.aria-describedby]="passwordError() ? 'password-error' : null"
+          [formField]="loginForm.password"
+        />
+        <button
+          type="button"
+          class="toggle"
+          [attr.aria-label]="showPassword() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+          (click)="showPassword.set(!showPassword())"
+        >
+          {{ showPassword() ? 'Ocultar' : 'Mostrar' }}
+        </button>
+      </div>
+      @if (passwordError(); as message) {
+        <p id="password-error" class="field-error">{{ message }}</p>
+      }
+
+      @if (error(); as message) {
+        <p class="error" role="alert">{{ message }}</p>
+      }
+
+      <button type="submit" class="submit">{{ submitting() ? 'Entrando…' : 'Entrar' }}</button>
+    </fieldset>
+  </form>
+</main>
