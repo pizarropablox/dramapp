@@ -41,6 +41,13 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - Tests: `@WithMockUser(roles = "BARRA" | "ADMIN")` en tests de controladores; `PostgresIntegrationTest` define las claves de test.
 - Frontend: `authGuard`/`adminGuard` en las rutas; ante un 401, `authInterceptor` vuelve al login sin recargar (el carrito se conserva).
 
+## PWA (DRAMA-32)
+
+- `@angular/service-worker` cachea solo la app (`frontend/ngsw-config.json`). **Nunca** agregar `dataGroups` ni cachear `/api/**`: totales y ventas siempre vienen de la red (`pwa-config.spec.ts` lo vigila).
+- Las versiones nuevas se aplican solo cuando el usuario toca "Actualizar" (`update/`): nunca recargar la app por código, el carrito vive en memoria.
+- La barra de actualización empuja las páginas: usar `var(--safe-area-top)` en vez de `env(safe-area-inset-top)` y restar `var(--update-bar-height)` en alturas de pantalla completa.
+- Íconos: fuentes en `frontend/branding/`, se generan con `branding/generate-icons.sh`.
+
 ## Stack
 
 | Parte | Tecnología |
@@ -91,6 +98,7 @@ npm test                     # Vitest (en modo watch; una sola pasada: npm test 
 npm run format               # formatea con Prettier
 npm run format:check         # verifica el formato (lo exige el CI)
 npm run build
+npm run serve:pwa            # build de producción en http://localhost:4300 con service worker (ver README)
 ```
 
 El backend lee `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`. Los valores por defecto (`localhost:5432/dramapp`, usuario y contraseña `dramapp`) coinciden con `.env.example`. Solo las usa la app (`spring-boot:run`); los tests no.

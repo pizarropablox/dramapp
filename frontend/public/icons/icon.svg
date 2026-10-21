@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Provisional DRAMApp icon: the app's dark background and pink (styles.scss) with a bold "D".
+       Replace with the official logo and run branding/generate-icons.sh (see README > Íconos). -->
+  <rect width="512" height="512" fill="#121212" />
+  <path
+    fill="#ff5fae"
+    fill-rule="evenodd"
+    d="M124 112H244A144 144 0 0 1 244 400H124Z M188 176H240A80 80 0 0 1 240 336H188Z"
+  />
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable variant for Android: full-bleed background and the "D" at 75 % so it stays inside the
+       safe zone (a centred circle of 40 % radius) whatever shape the launcher cuts. -->
+  <rect width="512" height="512" fill="#121212" />
+  <path
+    fill="#ff5fae"
+    fill-rule="evenodd"
+    transform="translate(256 256) scale(0.75) translate(-256 -256)"
+    d="M124 112H244A144 144 0 0 1 244 400H124Z M188 176H240A80 80 0 0 1 240 336H188Z"
+  />
+</svg>

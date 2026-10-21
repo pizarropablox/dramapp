@@ -44,6 +44,20 @@ Abre http://localhost:4200 e inicia sesión como `barra` o `admin` con las clave
 
 Para detener la base: `docker compose down` (los datos se conservan en el volumen `postgres-data`).
 
+### 5. Probar la app instalable (PWA)
+
+`npm start` no tiene service worker. Para probar el build de producción tal como lo sirve Render (con el backend corriendo):
+
+```powershell
+cd frontend
+npm run serve:pwa   # construye y sirve http://localhost:4300, con /api/* hacia el backend
+```
+
+- **En el computador** (http://localhost:4300): el service worker funciona. En Chrome, DevTools → **Application** muestra el manifest, el service worker y la casilla **Offline**. Para ver el aviso de versión nueva: deja la app abierta, cambia cualquier cosa del frontend, corre `npm run build` en otra terminal (el servidor sirve el build nuevo sin reiniciarse) y vuelve a la pestaña.
+- **En los teléfonos por la red local** (http://IP-del-PC:4300): la app abre y se puede **agregar a la pantalla de inicio**, pero sin service worker (fuera de `localhost` exige HTTPS), así que no hay modo offline ni aviso de versión nueva.
+- **Android con service worker:** conecta el teléfono por USB con depuración USB activada, abre `chrome://inspect` en el PC → **Port forwarding** `4300` → `localhost:4300`, y en el teléfono abre http://localhost:4300.
+- **iPhone con service worker:** solo con HTTPS: el preview del PR en Render (ojo: usa el backend de producción, no vender) o producción.
+
 ## Tests
 
 Backend (JUnit con [Testcontainers](https://testcontainers.com/)): cada corrida levanta su propio PostgreSQL 17 desechable en Docker, así que solo necesitas **Docker Desktop abierto**; no usa la base local.
@@ -168,6 +182,33 @@ Pégalo en `DRAMAPP_JWT_SECRET`. No se usa `generateValue` en `render.yaml`: la 
 **Intentos fallidos.** Tras 5 claves incorrectas en 5 minutos desde la misma IP, el login responde "Demasiados intentos" durante unos minutos; además hay un tope global de 30 intentos fallidos por minuto. Las sesiones ya abiertas no se ven afectadas. Nunca se bloquea a un usuario.
 
 > El backend identifica la IP con `X-Forwarded-For` (`server.forward-headers-strategy: native`, que toma la dirección más a la derecha agregada por el proxy, no la que manda el cliente). Si detrás del rewrite de Render todas las peticiones llegan con la IP del proxy, el límite "por IP" queda en la práctica **global**: un ataque podría trabar el login por unos minutos, pero nadie con sesión abierta lo nota. El log del backend muestra `Login as barra from <IP>` y `Failed login from <IP>`: compara esa IP con la de tu teléfono para saber cuál es el caso.
+
+### App instalable (PWA)
+
+DRAMApp se instala como una app en el teléfono: abre a pantalla completa, con su ícono, desde la pantalla de inicio.
+
+**Instalarla**
+
+- **Android (Chrome):** abre la app, menú **⋮ → Instalar app** (o **Agregar a pantalla de inicio**).
+- **iPhone (Safari):** abre la app, botón **Compartir → Agregar a pantalla de inicio**.
+
+> **iPhone: la app instalada tiene sus propias cookies**, separadas de Safari. Aunque ya hayas iniciado sesión en Safari, hay que **iniciar sesión dentro de la app instalada** (una vez; la sesión dura 24 horas como siempre).
+
+**Actualizaciones.** Después de un deploy, la app abierta descarga la versión nueva en segundo plano (revisa cada 15 minutos y al volver a ella) y muestra arriba **"Hay una versión nueva · Actualizar"**. Nunca se recarga sola: el carrito vive en memoria y se perdería. Si al tocar "Actualizar" hay productos en el carrito, avisa y pide "Actualizar igual". La primera vez que se abre después del deploy que agrega el service worker, solo lo instala; desde la siguiente, ya funciona.
+
+**Sin conexión.** La app abre desde la caché del teléfono, pero la API nunca se cachea: sin red muestra "No se pudo cargar el evento" / "No hay conexión con el servidor" y no deja vender, igual que en el navegador. El service worker solo guarda la app (HTML, JS, CSS, íconos); ver `frontend/ngsw-config.json`, que no tiene `dataGroups` a propósito (un test lo vigila).
+
+**Caché en Render.** `render.yaml` envía `Cache-Control: no-cache` para todo el static site, así que `ngsw-worker.js`, `ngsw.json`, `index.html` y `manifest.webmanifest` se revalidan siempre y los teléfonos ven cada versión nueva.
+
+**Íconos.** Son provisorios: fondo oscuro y una "D" rosada. Las fuentes están en `frontend/branding/` (`icon.svg` y `icon-maskable.svg`, esta con la "D" más chica para que Android pueda recortarla en círculo). Para cambiarlos por el logo oficial, reemplaza esos dos SVG y genera todos los tamaños (Docker, desde `frontend/`):
+
+```powershell
+docker run --rm -v "${PWD}:/work" -w /work alpine:3.22 sh branding/generate-icons.sh
+```
+
+También sirve pegar PNG con los mismos nombres en `frontend/public/icons/`.
+
+**Si el service worker quedara pegado en una versión mala** (no debería: el aviso y el `no-cache` lo evitan), Angular trae un service worker que se desinstala solo. En `render.yaml`, cambia el `buildCommand` del static site a `npm ci && npm run build && cp dist/frontend/browser/safety-worker.js dist/frontend/browser/ngsw-worker.js` y despliega: cada teléfono elimina el service worker la próxima vez que abra la app. Después se vuelve al `buildCommand` normal.
 
 ### Abrir y cerrar un evento (admin)
 

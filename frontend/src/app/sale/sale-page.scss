@@ -9,8 +9,8 @@
 .sale-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - var(--update-bar-height));
+  height: calc(100dvh - var(--update-bar-height));
   max-width: 30rem;
   margin: 0 auto;
 }
@@ -19,7 +19,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: calc(0.375rem + env(safe-area-inset-top)) 0.75rem 0.375rem;
+  padding: calc(0.375rem + var(--safe-area-top)) 0.75rem 0.375rem;
 }
 
 .status {
@@ -179,7 +179,7 @@
 // Over everything (sheets included), at the top: the bottom is where the next sale gets confirmed.
 .toast {
   position: fixed;
-  inset: calc(0.5rem + env(safe-area-inset-top)) 0.75rem auto;
+  inset: calc(0.5rem + var(--safe-area-top) + var(--update-bar-height)) 0.75rem auto;
   z-index: 40;
   display: flex;
   align-items: center;

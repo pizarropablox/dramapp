@@ -190,6 +190,19 @@ describe('SalePage', () => {
       expect(confirmButton().disabled).toBe(true);
       expect(text()).toContain('Sin evento abierto: no se puede vender.');
     });
+
+    it('opened offline (from the service worker cache), says so and does not pretend to sell', async () => {
+      fixture = TestBed.createComponent(SalePage);
+      TestBed.tick();
+      httpTesting.expectOne('/api/events/current').error(new ProgressEvent('error'));
+      httpTesting.expectOne('/api/products').error(new ProgressEvent('error'));
+      await fixture.whenStable();
+
+      expect(text()).toContain('No se pudo cargar el evento.');
+      expect(text()).toContain(`No se pudo cargar la carta. ${NO_CONNECTION_MESSAGE}`);
+      expect(root().querySelector('app-product-grid')).toBeNull();
+      expect(confirmButton().disabled).toBe(true);
+    });
   });
 
   describe('when admin opens or closes the event from another phone', () => {

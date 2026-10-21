@@ -17,6 +17,12 @@
   --on-danger: #121212;
   --focus: #ffd54f;
 
+  // The update bar (update-banner.ts) sits on top and sets its height here; pages start below it.
+  --update-bar-height: 0px;
+  // Notch / status bar, which the installed app draws under (black-translucent). While the update bar
+  // shows, the bar already covers it.
+  --safe-area-top: env(safe-area-inset-top);
+
   font-family:
     system-ui,
     -apple-system,
@@ -37,10 +43,18 @@ body {
   height: 100%;
 }
 
+:root.update-bar-visible {
+  --safe-area-top: 0px;
+}
+
 body {
+  // Landscape on a notched phone: keep content out of the notch sides.
+  padding: var(--update-bar-height) env(safe-area-inset-right) 0 env(safe-area-inset-left);
   background: var(--bg);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
+  // No pull-to-refresh: a reload would empty the cart, which lives in memory.
+  overscroll-behavior-y: none;
 }
 
 button {
