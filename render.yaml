@@ -50,6 +50,9 @@ services:
         value: 24.20.0
     headers:
       # index.html must be revalidated so phones pick up a new deploy; hashed assets still validate by ETag.
+      # The PWA depends on it too: ngsw-worker.js, ngsw.json, index.html and manifest.webmanifest must never
+      # be served stale by the browser or the CDN, or installed phones would not see the new version
+      # (DRAMA-32). One rule for everything, on purpose: no overlapping rules to reason about.
       - path: /*
         name: Cache-Control
         value: no-cache
