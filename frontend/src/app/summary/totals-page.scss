@@ -2,10 +2,9 @@
 // data follow. Rows are stacked (not side by side) so amounts like $1.234.000 fit at 375px.
 .totals-page {
   max-width: 30rem;
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--update-bar-height));
   margin: 0 auto;
-  padding: calc(0.375rem + env(safe-area-inset-top)) 0.75rem
-    calc(1rem + env(safe-area-inset-bottom));
+  padding: calc(0.375rem + var(--safe-area-top)) 0.75rem calc(1rem + env(safe-area-inset-bottom));
 }
 
 p,

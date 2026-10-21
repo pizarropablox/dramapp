@@ -5,9 +5,9 @@
   flex-direction: column;
   gap: 1.5rem;
   max-width: 24rem;
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--update-bar-height));
   margin: 0 auto;
-  padding: calc(2.5rem + env(safe-area-inset-top)) 1rem calc(1.5rem + env(safe-area-inset-bottom));
+  padding: calc(2.5rem + var(--safe-area-top)) 1rem calc(1.5rem + env(safe-area-inset-bottom));
 }
 
 h1,

@@ -1,7 +1,7 @@
 .status-page {
   max-width: 40rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: calc(2rem + var(--safe-area-top)) 1rem calc(2rem + env(safe-area-inset-bottom));
 }
 
 a {
