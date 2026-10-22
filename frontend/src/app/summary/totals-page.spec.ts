@@ -21,10 +21,26 @@ const OPEN_SUMMARY: EventSummaryResponse = {
     closedAt: null,
   },
   byPaymentMethod: [
-    { paymentMethod: 'MERCADO_PAGO', salesCount: 2, sold: 30500, tips: 1000, total: 31500 },
-    { paymentMethod: 'EFECTIVO', salesCount: 1, sold: 18000, tips: 500, total: 18500 },
+    {
+      paymentMethod: 'MERCADO_PAGO',
+      salesCount: 2,
+      sold: 30500,
+      tips: 1000,
+      total: 31500,
+      refunds: 0,
+      expected: 31500,
+    },
+    {
+      paymentMethod: 'EFECTIVO',
+      salesCount: 1,
+      sold: 18000,
+      tips: 500,
+      total: 18500,
+      refunds: 0,
+      expected: 18500,
+    },
   ],
-  overall: { salesCount: 3, sold: 48500, tips: 1500, total: 50000 },
+  overall: { salesCount: 3, sold: 48500, tips: 1500, total: 50000, refunds: 0, expected: 50000 },
   voided: {
     count: 2,
     amount: 17500,
@@ -33,6 +49,7 @@ const OPEN_SUMMARY: EventSummaryResponse = {
       { paymentMethod: 'EFECTIVO', count: 1, amount: 3500 },
     ],
   },
+  refunds: { count: 0, amount: 0, voidedCount: 0, voidedAmount: 0 },
   products: [
     {
       productId: 1,
@@ -61,6 +78,17 @@ const OPEN_SUMMARY: EventSummaryResponse = {
 const CLOSED_SUMMARY: EventSummaryResponse = {
   ...OPEN_SUMMARY,
   event: { ...OPEN_SUMMARY.event, status: 'CLOSED', closedAt: '2026-11-01T07:30:00Z' },
+};
+
+/** $20.000 given back from the till (one refund of $5.000 voided): more than the cash sales. */
+const REFUND_SUMMARY: EventSummaryResponse = {
+  ...OPEN_SUMMARY,
+  byPaymentMethod: [
+    OPEN_SUMMARY.byPaymentMethod[0],
+    { ...OPEN_SUMMARY.byPaymentMethod[1], refunds: 20000, expected: -1500 },
+  ],
+  overall: { ...OPEN_SUMMARY.overall, refunds: 20000, expected: 30000 },
+  refunds: { count: 2, amount: 20000, voidedCount: 1, voidedAmount: 5000 },
 };
 
 function withTotal(total: number): EventSummaryResponse {
@@ -142,7 +170,7 @@ describe('TotalsPage', () => {
   }
 
   describe('totals', () => {
-    it('shows Mercado Pago, Efectivo and the overall total big, with sold + tip below', () => {
+    it('shows what is expected in Mercado Pago and in the till, and the overall total big', () => {
       setup();
 
       expect(text('h1')).toBe('DRAMA Octubre');
@@ -158,7 +186,71 @@ describe('TotalsPage', () => {
       );
       expect(text('.overall .amount')).toBe('$50.000');
       expect(text('.overall .detail')).toBe('Vendido $48.500 + Propina $1.500');
-      expect(texts('.total-row .label')).toEqual(['Mercado Pago', 'Efectivo', 'Total']);
+      expect(texts('.total-row .label')).toEqual([
+        'Esperado en Mercado Pago',
+        'Esperado en caja',
+        'Total',
+      ]);
+      // Without refunds there is no refunds line and nothing in red.
+      expect(root().querySelector('.total-row .refunds')).toBeNull();
+      expect(root().querySelector('.amount.negative')).toBeNull();
+    });
+
+    it('puts the amount under the title in both expected cards', () => {
+      setup();
+
+      const cards = Array.from(root().querySelectorAll('.total-row.expected'));
+      expect(cards.map((card) => card.getAttribute('data-method'))).toEqual([
+        'MERCADO_PAGO',
+        'EFECTIVO',
+      ]);
+      for (const card of cards) {
+        const line = card.querySelector('.line')!;
+        expect(Array.from(line.children).map((child) => child.className)).toEqual([
+          'label',
+          'amount',
+        ]);
+      }
+      expect(root().querySelector('.overall')?.classList).not.toContain('expected');
+    });
+
+    it('takes refunds off the till only, in red when it goes negative', () => {
+      setup(REFUND_SUMMARY);
+
+      expect(text('[data-method="MERCADO_PAGO"] .amount')).toBe('$31.500');
+      expect(root().querySelector('[data-method="MERCADO_PAGO"] .refunds')).toBeNull();
+
+      const till = root().querySelector('.total-row[data-method="EFECTIVO"]')!;
+      expect(till.querySelector('.amount')?.textContent?.trim()).toBe('−$1.500');
+      expect(till.querySelector('.amount')?.classList).toContain('negative');
+      expect(till.querySelector('.refunds')?.textContent?.trim()).toBe('Devoluciones −$20.000');
+    });
+
+    it('keeps what was charged as the total, with the refunds and the net below', () => {
+      setup(REFUND_SUMMARY);
+
+      expect(text('.overall .amount')).toBe('$50.000');
+      expect(text('.overall .refunds')).toBe('Devoluciones −$20.000 · Neto $30.000');
+    });
+
+    it('shows expected = total when the backend sends no refund fields (an older one)', () => {
+      create();
+      const { refunds: _refunds, ...older } = OPEN_SUMMARY;
+      httpTesting.expectOne('/api/events/latest/summary').flush({
+        ...older,
+        byPaymentMethod: OPEN_SUMMARY.byPaymentMethod.map(
+          ({ refunds: _methodRefunds, expected: _expected, ...method }) => method,
+        ),
+        overall: { salesCount: 3, sold: 48500, tips: 1500, total: 50000 },
+      });
+      TestBed.tick();
+
+      expect(texts('.total-row .amount')).toEqual(['$31.500', '$18.500', '$50.000']);
+      expect(root().querySelector('.refunds:not(div)')).toBeNull();
+      expect(pairs(root().querySelectorAll('.control dl > div')).slice(-2)).toEqual([
+        'Devoluciones | 0 · $0',
+        'Anuladas | 0 · $0',
+      ]);
     });
 
     it('lists units by product, most first, with expandable variants', () => {
@@ -189,6 +281,17 @@ describe('TotalsPage', () => {
         'Anuladas | 2 · $17.500',
         'Mercado Pago | 1 · $14.000',
         'Efectivo | 1 · $3.500',
+        'Devoluciones | 0 · $0',
+        'Anuladas | 0 · $0',
+      ]);
+    });
+
+    it('shows the refunds and the voided ones in the control block', () => {
+      setup(REFUND_SUMMARY);
+
+      expect(pairs(root().querySelectorAll('.control dl > div')).slice(-2)).toEqual([
+        'Devoluciones | 2 · −$20.000',
+        'Anuladas | 1 · $5.000',
       ]);
     });
 
@@ -201,8 +304,9 @@ describe('TotalsPage', () => {
           sold: 0,
           tips: 0,
           total: 0,
+          expected: 0,
         })),
-        overall: { salesCount: 0, sold: 0, tips: 0, total: 0 },
+        overall: { salesCount: 0, sold: 0, tips: 0, total: 0, refunds: 0, expected: 0 },
         voided: {
           count: 0,
           amount: 0,
@@ -431,8 +535,9 @@ describe('TotalsPage', () => {
         sold: 0,
         tips: 0,
         total: 0,
+        expected: 0,
       })),
-      overall: { salesCount: 0, sold: 0, tips: 0, total: 0 },
+      overall: { salesCount: 0, sold: 0, tips: 0, total: 0, refunds: 0, expected: 0 },
       products: [],
     };
 

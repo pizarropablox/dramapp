@@ -130,7 +130,7 @@ Con el perfil `prod`, el backend **no arranca** si falta `DRAMAPP_JWT_SECRET` o 
    - `SPRING_DATASOURCE_USERNAME` = `USUARIO`
    - `SPRING_DATASOURCE_PASSWORD` = `CLAVE`
 
-No hay que crear tablas: Flyway aplica las migraciones (V1–V4, con la carta oficial) en la primera partida del backend.
+No hay que crear tablas: Flyway aplica las migraciones (V1–V5, con la carta oficial) en la primera partida del backend.
 
 **2. Render**
 
@@ -141,7 +141,7 @@ No hay que crear tablas: Flyway aplica las migraciones (V1–V4, con la carta of
    - Backend, **Settings → Health Check Path**: `/actuator/health/liveness`.
    - La URL del backend. Si no es `https://dramapp-backend.onrender.com`, actualizar el destino del rewrite `/api/*` en `render.yaml` (y en **Redirects/Rewrites** del static site).
 4. Frontend, **Previews**: dejar los PR previews en **Automatic**.
-5. Primera partida del backend: en los logs deben aparecer las cuatro migraciones de Flyway y `Started BackendApplication`.
+5. Primera partida del backend: en los logs deben aparecer las cinco migraciones de Flyway y `Started BackendApplication`.
 
 **3. UptimeRobot**
 
@@ -209,6 +209,24 @@ docker run --rm -v "${PWD}:/work" -w /work alpine:3.22 sh branding/generate-icon
 También sirve pegar PNG con los mismos nombres en `frontend/public/icons/`.
 
 **Si el service worker quedara pegado en una versión mala** (no debería: el aviso y el `no-cache` lo evitan), Angular trae un service worker que se desinstala solo. En `render.yaml`, cambia el `buildCommand` del static site a `npm ci && npm run build && cp dist/frontend/browser/safety-worker.js dist/frontend/browser/ngsw-worker.js` y despliega: cada teléfono elimina el service worker la próxima vez que abra la app. Después se vuelve al `buildCommand` normal.
+
+### Anular y devolver plata
+
+Son dos cosas distintas:
+
+- **Anular una venta** = la venta no existió (tarjeta rechazada, NFC que falló, venta mal registrada). No se mueve plata. Se hace desde la venta recién registrada o desde **Ventas** → Últimas ventas, con un motivo opcional.
+- **Devolución** = la venta sí existió y se le devolvió plata en efectivo al cliente, casi siempre al final de la fiesta, cuando la venta original ya no se encuentra. En **Ventas** → **Devolución** (`barra` y `admin`, con un evento abierto) se ingresa el monto (hasta $100.000) y un motivo obligatorio; el botón repite el monto: "Entregar $15.000 de la caja". En la barra nunca se devuelve por Mercado Pago.
+
+Las devoluciones aparecen en Últimas ventas mezcladas por hora con las ventas. Si una se ingresó mal se puede anular: queda tachada y deja de restar.
+
+En **Totales**:
+
+- **Esperado en Mercado Pago** = ventas por Mercado Pago (las devoluciones no lo cambian).
+- **Esperado en caja** = ventas en efectivo − devoluciones. Puede ser negativo (en rojo).
+- **Total** sigue siendo lo cobrado; si hubo devoluciones, debajo dice "Devoluciones −$X · Neto $Y".
+- **Control** muestra cuántas devoluciones hubo, por cuánto, y las anuladas.
+
+> **Deploy de este cambio:** el frontend suele publicarse unos minutos antes que el backend. En ese rato "Devolución" responde con un error y no registra nada, y Últimas ventas muestra las ventas con el aviso "No se pudieron cargar las devoluciones". Mejor mergear un día sin evento.
 
 ### Abrir y cerrar un evento (admin)
 

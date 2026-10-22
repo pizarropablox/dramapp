@@ -11,6 +11,14 @@ describe('formatClp', () => {
     expect(formatClp(amount)).toBe(expected);
   });
 
+  it('writes negative amounts with a minus sign before the peso sign', () => {
+    expect(formatClp(-15000)).toBe('−$15.000');
+  });
+
+  it('writes -0 as $0', () => {
+    expect(formatClp(-0)).toBe('$0');
+  });
+
   it('is exposed as the clp pipe', () => {
     expect(new ClpPipe().transform(13000)).toBe('$13.000');
   });

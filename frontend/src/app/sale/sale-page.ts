@@ -5,6 +5,10 @@ import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
+import { CreateRefundRequest, RefundResponse } from '../refund/refund';
+import { RefundDialog } from '../refund/refund-dialog';
+import { RefundService } from '../refund/refund.service';
+import { VoidRefundDialog } from '../refund/void-refund-dialog';
 import { errorMessage } from '../shared/api-error';
 import { formatClp } from '../shared/clp';
 import { CartPanel } from './cart-panel';
@@ -15,7 +19,7 @@ import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
-import { voidedNotice } from './sale-format';
+import { REFUND_VOIDED_NOTICE, refundNotice, SALE_VOIDED_NOTICE } from './sale-format';
 import { NO_TIP, TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
 import { VoidSaleDialog } from './void-sale-dialog';
@@ -39,10 +43,12 @@ function normalize(text: string): string {
     CheckoutBar,
     ProductGrid,
     RecentSalesSheet,
+    RefundDialog,
     SaleConfirmation,
     SessionExpiryNotice,
     TipSelector,
     VariantPicker,
+    VoidRefundDialog,
     VoidSaleDialog,
   ],
   templateUrl: './sale-page.html',
@@ -52,6 +58,7 @@ export class SalePage {
   protected readonly currentEvent = inject(CurrentEventStore);
   private readonly productService = inject(ProductService);
   private readonly saleService = inject(SaleService);
+  private readonly refundService = inject(RefundService);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly cart = inject(CartStore);
 
@@ -88,12 +95,29 @@ export class SalePage {
     stream: () => this.saleService.recent(),
   });
   protected readonly recentErrorMessage = computed(() => errorMessage(this.recentSales.error()));
+  /** Mixed with the sales in the list; if they fail (an older backend), the sales still show. */
+  protected readonly recentRefunds = rxResource({
+    params: () => (this.recentOpen() ? true : undefined),
+    stream: () => this.refundService.recent(),
+  });
 
   /** The sale whose void is being confirmed, from the confirmation or from the list. */
   protected readonly voiding = signal<SaleResponse | null>(null);
   protected readonly voidSubmitting = signal(false);
   protected readonly voidError = signal<string | null>(null);
-  protected readonly voidNotice = signal<string | null>(null);
+
+  /** "Devolución" is open: cash given back from the till, with no sale to pick. */
+  protected readonly refunding = signal(false);
+  protected readonly refundSubmitting = signal(false);
+  protected readonly refundError = signal<string | null>(null);
+
+  /** The refund whose void is being confirmed. */
+  protected readonly voidingRefund = signal<RefundResponse | null>(null);
+  protected readonly voidRefundSubmitting = signal(false);
+  protected readonly voidRefundError = signal<string | null>(null);
+
+  /** "Venta anulada.", "Devolución registrada…": over everything, until closed or the next action. */
+  protected readonly notice = signal<string | null>(null);
 
   protected readonly blockReason = computed(() => {
     if (!this.openEvent()) {
@@ -148,7 +172,7 @@ export class SalePage {
       .subscribe({
         next: (sale) => {
           this.lastSale.set(sale);
-          this.voidNotice.set(null);
+          this.notice.set(null);
           this.cart.clear();
           this.paymentMethod.set(null);
           this.tip.set(NO_TIP);
@@ -167,15 +191,20 @@ export class SalePage {
   }
 
   protected openRecent(): void {
-    this.voidNotice.set(null);
+    this.notice.set(null);
     this.recentOpen.set(true);
   }
 
   protected closeRecent(): void {
-    // Escape reaches both sheets: only the void dialog on top should close.
-    if (!this.voiding()) {
+    // Escape reaches every sheet: only the dialog on top should close.
+    if (!this.voiding() && !this.refunding() && !this.voidingRefund()) {
       this.recentOpen.set(false);
     }
+  }
+
+  protected reloadRecent(): void {
+    this.recentSales.reload();
+    this.recentRefunds.reload();
   }
 
   protected startVoid(sale: SaleResponse): void {
@@ -211,7 +240,7 @@ export class SalePage {
               sales?.map((candidate) => (candidate.id === voided.id ? voided : candidate)),
             );
           }
-          this.voidNotice.set(voidedNotice(voided));
+          this.notice.set(SALE_VOIDED_NOTICE);
         },
         error: (error: unknown) => {
           this.voidSubmitting.set(false);
@@ -224,6 +253,99 @@ export class SalePage {
             if (this.recentOpen()) {
               this.recentSales.reload();
             }
+            if (error.status === HttpStatusCode.Conflict) {
+              this.currentEvent.refresh();
+            }
+          }
+        },
+      });
+  }
+
+  protected startRefund(): void {
+    this.notice.set(null);
+    this.refundError.set(null);
+    this.refunding.set(true);
+  }
+
+  protected cancelRefund(): void {
+    if (!this.refundSubmitting()) {
+      this.refunding.set(false);
+    }
+  }
+
+  protected confirmRefund(request: CreateRefundRequest): void {
+    if (this.refundSubmitting()) {
+      return;
+    }
+    this.refundSubmitting.set(true);
+    this.refundError.set(null);
+    this.refundService
+      .create(request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (refund) => {
+          this.refundSubmitting.set(false);
+          this.refunding.set(false);
+          if (this.recentRefunds.hasValue()) {
+            this.recentRefunds.update((refunds) => [refund, ...(refunds ?? [])]);
+          } else {
+            this.recentRefunds.reload();
+          }
+          this.notice.set(refundNotice(refund.amount));
+        },
+        error: (error: unknown) => {
+          this.refundSubmitting.set(false);
+          this.refundError.set(errorMessage(error));
+          // The event may have been closed from another phone: show what is true now.
+          if (error instanceof HttpErrorResponse && error.status === HttpStatusCode.Conflict) {
+            this.currentEvent.refresh();
+          }
+        },
+      });
+  }
+
+  protected startVoidRefund(refund: RefundResponse): void {
+    this.notice.set(null);
+    this.voidRefundError.set(null);
+    this.voidingRefund.set(refund);
+  }
+
+  protected cancelVoidRefund(): void {
+    if (!this.voidRefundSubmitting()) {
+      this.voidingRefund.set(null);
+    }
+  }
+
+  protected confirmVoidRefund(): void {
+    const refund = this.voidingRefund();
+    if (!refund || this.voidRefundSubmitting()) {
+      return;
+    }
+    this.voidRefundSubmitting.set(true);
+    this.voidRefundError.set(null);
+    this.refundService
+      .voidRefund(refund.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (voided) => {
+          this.voidRefundSubmitting.set(false);
+          this.voidingRefund.set(null);
+          if (this.recentRefunds.hasValue()) {
+            this.recentRefunds.update((refunds) =>
+              refunds?.map((candidate) => (candidate.id === voided.id ? voided : candidate)),
+            );
+          }
+          this.notice.set(REFUND_VOIDED_NOTICE);
+        },
+        error: (error: unknown) => {
+          this.voidRefundSubmitting.set(false);
+          this.voidRefundError.set(errorMessage(error));
+          // Another phone may have voided it, or the event may have been closed: show what is true now.
+          if (
+            error instanceof HttpErrorResponse &&
+            (error.status === HttpStatusCode.Conflict || error.status === HttpStatusCode.NotFound)
+          ) {
+            this.recentRefunds.reload();
             if (error.status === HttpStatusCode.Conflict) {
               this.currentEvent.refresh();
             }

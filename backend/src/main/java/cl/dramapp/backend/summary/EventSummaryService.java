@@ -16,12 +16,15 @@ import cl.dramapp.backend.event.EventNotFoundException;
 import cl.dramapp.backend.event.EventRepository;
 import cl.dramapp.backend.event.EventResponse;
 import cl.dramapp.backend.event.EventStatus;
+import cl.dramapp.backend.refund.RefundStatus;
 import cl.dramapp.backend.sale.PaymentMethod;
 import cl.dramapp.backend.sale.SaleStatus;
+import cl.dramapp.backend.summary.EventSummaryRepository.RefundAggregate;
 import cl.dramapp.backend.summary.EventSummaryRepository.SaleAggregate;
 import cl.dramapp.backend.summary.EventSummaryRepository.VariantUnitsRow;
 import cl.dramapp.backend.summary.EventSummaryResponse.PaymentMethodTotals;
 import cl.dramapp.backend.summary.EventSummaryResponse.ProductUnits;
+import cl.dramapp.backend.summary.EventSummaryResponse.RefundTotals;
 import cl.dramapp.backend.summary.EventSummaryResponse.Totals;
 import cl.dramapp.backend.summary.EventSummaryResponse.VariantUnits;
 import cl.dramapp.backend.summary.EventSummaryResponse.VoidedByPaymentMethod;
@@ -44,8 +47,8 @@ public class EventSummaryService {
 	}
 
 	/**
-	 * REPEATABLE_READ gives both aggregation queries one snapshot in PostgreSQL, so a sale registered in between
-	 * cannot show up in the units but not in the totals.
+	 * REPEATABLE_READ gives all aggregation queries one snapshot in PostgreSQL, so a sale or refund registered in
+	 * between cannot show up in one part of the summary but not in another.
 	 */
 	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 	public EventSummaryResponse summary(Long eventId) {
@@ -64,15 +67,18 @@ public class EventSummaryService {
 
 	private EventSummaryResponse summaryOf(Event event) {
 		List<SaleAggregate> aggregates = summaryRepository.aggregateSales(event.getId());
+		RefundTotals refunds = refundTotals(summaryRepository.aggregateRefunds(event.getId()));
 
 		List<PaymentMethodTotals> byPaymentMethod = PAYMENT_METHODS.stream()
-			.map(method -> totalsOf(method, aggregates))
+			.map(method -> totalsOf(method, aggregates, method == PaymentMethod.EFECTIVO ? refunds.amount() : 0))
 			.toList();
 		Totals overall = byPaymentMethod.stream()
-			.map(totals -> new Totals(totals.salesCount(), totals.sold(), totals.tips(), totals.total()))
-			.reduce(new Totals(0, 0, 0, 0), (a, b) -> new Totals(a.salesCount() + b.salesCount(),
+			.map(totals -> new Totals(totals.salesCount(), totals.sold(), totals.tips(), totals.total(),
+					totals.refunds(), totals.expected()))
+			.reduce(new Totals(0, 0, 0, 0, 0, 0), (a, b) -> new Totals(a.salesCount() + b.salesCount(),
 					Math.addExact(a.sold(), b.sold()), Math.addExact(a.tips(), b.tips()),
-					Math.addExact(a.total(), b.total())));
+					Math.addExact(a.total(), b.total()), Math.addExact(a.refunds(), b.refunds()),
+					Math.addExact(a.expected(), b.expected())));
 
 		List<VoidedByPaymentMethod> voidedByMethod = PAYMENT_METHODS.stream()
 			.map(method -> voidedOf(method, aggregates))
@@ -84,14 +90,32 @@ public class EventSummaryService {
 		List<ProductUnits> products = productUnits(
 				summaryRepository.unitsByVariant(event.getId(), SaleStatus.ACTIVE));
 
-		return new EventSummaryResponse(EventResponse.from(event), byPaymentMethod, overall, voided, products);
+		return new EventSummaryResponse(EventResponse.from(event), byPaymentMethod, overall, voided, refunds,
+				products);
 	}
 
-	private static PaymentMethodTotals totalsOf(PaymentMethod method, List<SaleAggregate> aggregates) {
+	/** expected = total - refunds, where refunds is the active refunds for EFECTIVO and 0 for Mercado Pago. */
+	private static PaymentMethodTotals totalsOf(PaymentMethod method, List<SaleAggregate> aggregates, long refunds) {
 		return find(SaleStatus.ACTIVE, method, aggregates)
-			.map(row -> new PaymentMethodTotals(method, row.salesCount(), row.sold(), row.tips(),
-					Math.addExact(row.sold(), row.tips())))
-			.orElse(new PaymentMethodTotals(method, 0, 0, 0, 0));
+			.map(row -> {
+				long total = Math.addExact(row.sold(), row.tips());
+				return new PaymentMethodTotals(method, row.salesCount(), row.sold(), row.tips(), total, refunds,
+						Math.subtractExact(total, refunds));
+			})
+			.orElse(new PaymentMethodTotals(method, 0, 0, 0, 0, refunds, -refunds));
+	}
+
+	private static RefundTotals refundTotals(List<RefundAggregate> rows) {
+		RefundAggregate active = findRefunds(RefundStatus.ACTIVE, rows);
+		RefundAggregate voided = findRefunds(RefundStatus.VOIDED, rows);
+		return new RefundTotals(active.count(), active.amount(), voided.count(), voided.amount());
+	}
+
+	private static RefundAggregate findRefunds(RefundStatus status, List<RefundAggregate> rows) {
+		return rows.stream()
+			.filter(row -> row.status() == status)
+			.findFirst()
+			.orElse(new RefundAggregate(status, 0L, 0L));
 	}
 
 	private static VoidedByPaymentMethod voidedOf(PaymentMethod method, List<SaleAggregate> aggregates) {

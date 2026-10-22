@@ -21,6 +21,8 @@ import cl.dramapp.backend.event.Event;
 import cl.dramapp.backend.event.EventRepository;
 import cl.dramapp.backend.product.ProductRepository;
 import cl.dramapp.backend.product.ProductVariant;
+import cl.dramapp.backend.refund.Refund;
+import cl.dramapp.backend.refund.RefundRepository;
 import cl.dramapp.backend.sale.PaymentMethod;
 import cl.dramapp.backend.sale.Sale;
 import cl.dramapp.backend.sale.SaleRepository;
@@ -43,6 +45,9 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private SaleRepository saleRepository;
+
+	@Autowired
+	private RefundRepository refundRepository;
 
 	@Autowired
 	private EntityManager entityManager;
@@ -77,6 +82,16 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 	private void voidSale(Sale sale) {
 		sale.voidSale("prueba");
 		saleRepository.saveAndFlush(sale);
+	}
+
+	/** Cash given back from the till; a voided one is saved first, then voided (voided_at >= created_at). */
+	private Refund refund(Event event, long amount, boolean voided) {
+		Refund refund = refundRepository.saveAndFlush(new Refund(event, amount, "prueba"));
+		if (voided) {
+			refund.voidRefund();
+			refundRepository.saveAndFlush(refund);
+		}
+		return refund;
 	}
 
 	private MvcTestResult summary(Object id) {
@@ -131,10 +146,16 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 		assertPath(result, "$.byPaymentMethod[1].sold", 18000);
 		assertPath(result, "$.byPaymentMethod[1].tips", 500);
 		assertPath(result, "$.byPaymentMethod[1].total", 18500);
+		// Without refunds, the expected amounts are the totals.
+		assertThat(result).bodyJson().extractingPath("$.byPaymentMethod[*].refunds").asArray().containsExactly(0, 0);
+		assertThat(result).bodyJson().extractingPath("$.byPaymentMethod[*].expected").asArray()
+			.containsExactly(31500, 18500);
 		assertPath(result, "$.overall.salesCount", 4);
 		assertPath(result, "$.overall.sold", 48500);
 		assertPath(result, "$.overall.tips", 1500);
 		assertPath(result, "$.overall.total", 50000);
+		assertPath(result, "$.overall.refunds", 0);
+		assertPath(result, "$.overall.expected", 50000);
 	}
 
 	@Test
@@ -206,6 +227,13 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 		assertPath(result, "$.overall.sold", 0);
 		assertPath(result, "$.overall.tips", 0);
 		assertPath(result, "$.overall.total", 0);
+		assertPath(result, "$.overall.refunds", 0);
+		assertPath(result, "$.overall.expected", 0);
+		assertThat(result).bodyJson().extractingPath("$.byPaymentMethod[*].expected").asArray().containsExactly(0, 0);
+		assertPath(result, "$.refunds.count", 0);
+		assertPath(result, "$.refunds.amount", 0);
+		assertPath(result, "$.refunds.voidedCount", 0);
+		assertPath(result, "$.refunds.voidedAmount", 0);
 		assertPath(result, "$.voided.count", 0);
 		assertPath(result, "$.voided.amount", 0);
 		assertThat(result).bodyJson().extractingPath("$.voided.byPaymentMethod[*].count").asArray()
@@ -228,6 +256,112 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 		assertPath(result, "$.overall.total", 3000);
 		assertThat(result).bodyJson().extractingPath("$.products[*].productName").asArray()
 			.containsExactly("Agua 600cc");
+	}
+
+	// --- Refunds ---
+
+	/** Amounts can be negative here: compare them as longs. */
+	private void assertAmount(MvcTestResult result, String path, long expected) {
+		assertThat(result).bodyJson().extractingPath(path).convertTo(Long.class).isEqualTo(expected);
+	}
+
+	@Test
+	void activeRefundsComeOffTheExpectedCashOnly() {
+		Event event = eventWithSales();
+		refund(event, 15000, false);
+		refund(event, 2000, false);
+
+		var result = summary(event.getId());
+
+		// Mercado Pago never refunds at the bar: its expected stays its total.
+		assertAmount(result, "$.byPaymentMethod[0].total", 31500);
+		assertAmount(result, "$.byPaymentMethod[0].refunds", 0);
+		assertAmount(result, "$.byPaymentMethod[0].expected", 31500);
+		assertAmount(result, "$.byPaymentMethod[1].total", 18500);
+		assertAmount(result, "$.byPaymentMethod[1].refunds", 17000);
+		assertAmount(result, "$.byPaymentMethod[1].expected", 1500);
+		// The total is still what was charged; expected is what is left.
+		assertAmount(result, "$.overall.total", 50000);
+		assertAmount(result, "$.overall.refunds", 17000);
+		assertAmount(result, "$.overall.expected", 33000);
+		assertAmount(result, "$.refunds.count", 2);
+		assertAmount(result, "$.refunds.amount", 17000);
+		assertAmount(result, "$.refunds.voidedCount", 0);
+	}
+
+	@Test
+	void voidedRefundsDoNotComeOffAnything() {
+		Event event = eventWithSales();
+		refund(event, 15000, false);
+		refund(event, 5000, true);
+
+		var result = summary(event.getId());
+
+		assertAmount(result, "$.byPaymentMethod[1].refunds", 15000);
+		assertAmount(result, "$.byPaymentMethod[1].expected", 3500);
+		assertAmount(result, "$.overall.expected", 35000);
+		assertAmount(result, "$.refunds.count", 1);
+		assertAmount(result, "$.refunds.amount", 15000);
+		assertAmount(result, "$.refunds.voidedCount", 1);
+		assertAmount(result, "$.refunds.voidedAmount", 5000);
+	}
+
+	@Test
+	void theExpectedCashCanBeNegative() {
+		Event event = event("DRAMA Octubre");
+		sale(event, PaymentMethod.MERCADO_PAGO, 30000, 0, Map.of(variant("Jack Daniels", "Original"), 4));
+		sale(event, PaymentMethod.EFECTIVO, 3500, 0, Map.of(variant("Red Bull", "Única"), 1));
+		refund(event, 15000, false);
+
+		var result = summary(event.getId());
+
+		assertAmount(result, "$.byPaymentMethod[0].expected", 30000);
+		assertAmount(result, "$.byPaymentMethod[1].expected", -11500);
+		assertAmount(result, "$.overall.expected", 18500);
+	}
+
+	@Test
+	void anEventWithOnlyRefundsExpectsTheTillShort() {
+		Event event = event("DRAMA Octubre");
+		refund(event, 15000, false);
+
+		var result = summary(event.getId());
+
+		assertAmount(result, "$.byPaymentMethod[1].total", 0);
+		assertAmount(result, "$.byPaymentMethod[1].salesCount", 0);
+		assertAmount(result, "$.byPaymentMethod[1].refunds", 15000);
+		assertAmount(result, "$.byPaymentMethod[1].expected", -15000);
+		assertAmount(result, "$.overall.total", 0);
+		assertAmount(result, "$.overall.expected", -15000);
+	}
+
+	@Test
+	void doesNotAddRefundsOfOtherEvents() {
+		Event previous = event("DRAMA Septiembre");
+		refund(previous, 15000, false);
+		refund(previous, 5000, true);
+		previous.close();
+		eventRepository.saveAndFlush(previous);
+		Event event = event("DRAMA Octubre");
+		sale(event, PaymentMethod.EFECTIVO, 3000, 0, Map.of(variant("Agua 600cc", "Única"), 1));
+
+		var result = summary(event.getId());
+
+		assertAmount(result, "$.byPaymentMethod[1].refunds", 0);
+		assertAmount(result, "$.byPaymentMethod[1].expected", 3000);
+		assertAmount(result, "$.refunds.count", 0);
+		assertAmount(result, "$.refunds.voidedCount", 0);
+	}
+
+	@Test
+	void refundsDoNotChangeTheUnits() {
+		Event event = event("DRAMA Octubre");
+		sale(event, PaymentMethod.EFECTIVO, 7000, 0, Map.of(variant("Red Bull", "Única"), 2));
+		refund(event, 3500, false);
+
+		var result = summary(event.getId());
+
+		assertThat(result).bodyJson().extractingPath("$.products[0].units").isEqualTo(2);
 	}
 
 	@Test

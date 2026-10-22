@@ -10,11 +10,13 @@ import {
 } from '@angular/core';
 import { formatTime } from '../shared/time';
 import { MAX_VOID_REASON_LENGTH, SaleResponse } from './sale';
-import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
+import { saleSummary, voidQuestion } from './sale-format';
 
 /**
  * Bottom sheet confirming a void, which cannot be undone. "Volver" gets the focus so a stray tap
  * does not void; "Anular venta" sits on the right, under the thumb, once the cashier has read it.
+ * Voiding means the sale never happened (card declined, mistyped sale): no money moves. Cash given
+ * back is a separate refund ("Devolución", in the latest sales).
  */
 @Component({
   selector: 'app-void-sale-dialog',
@@ -26,11 +28,10 @@ import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="void-sale-title"
-      aria-describedby="void-sale-summary void-sale-reminder"
+      aria-describedby="void-sale-summary void-sale-help"
     >
       <h2 id="void-sale-title">{{ question() }}</h2>
       <p id="void-sale-summary" class="summary">{{ time() }} · {{ summary() }}</p>
-      <p id="void-sale-reminder" class="reminder">{{ reminder() }}</p>
       <label class="reason">
         <span>Motivo (opcional)</span>
         <input
@@ -48,6 +49,7 @@ import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
       @if (error(); as message) {
         <p class="error" role="alert">{{ message }}</p>
       }
+      <p id="void-sale-help" class="help">¿Hay que devolver plata? Usa Devolución</p>
       <div class="actions">
         <button #back type="button" class="back" [disabled]="submitting()" (click)="cancel()">
           Volver
@@ -100,12 +102,9 @@ import { REFUND_REMINDERS, saleSummary, voidQuestion } from './sale-format';
       color: var(--muted);
     }
 
-    .reminder {
-      padding: 0.6rem 0.75rem;
-      border-left: 4px solid var(--focus);
-      border-radius: 0.5rem;
-      background: var(--surface-2);
-      font-weight: 700;
+    .help {
+      color: var(--muted);
+      font-size: 0.9rem;
     }
 
     .reason {
@@ -165,7 +164,6 @@ export class VoidSaleDialog {
   protected readonly question = computed(() => voidQuestion(this.sale()));
   protected readonly time = computed(() => formatTime(this.sale().createdAt));
   protected readonly summary = computed(() => saleSummary(this.sale().lines));
-  protected readonly reminder = computed(() => REFUND_REMINDERS[this.sale().paymentMethod]);
 
   private readonly backButton = viewChild<ElementRef<HTMLButtonElement>>('back');
 
