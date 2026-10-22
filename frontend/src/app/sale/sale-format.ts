@@ -1,5 +1,5 @@
 import { formatClp } from '../shared/clp';
-import { PAYMENT_METHOD_LABELS, PaymentMethod, SaleLineResponse, SaleResponse } from './sale';
+import { PAYMENT_METHOD_LABELS, SaleLineResponse, SaleResponse } from './sale';
 
 /** Name the menu gives the only variant of a product: not worth repeating in a summary. */
 export const SINGLE_VARIANT_NAME = 'Única';
@@ -17,21 +17,18 @@ export function saleSummary(lines: readonly SaleLineResponse[]): string {
     .join(' · ');
 }
 
-/** What the cashier must do to give the money back: the app only records the void. */
-export const REFUND_REMINDERS: Record<PaymentMethod, string> = {
-  EFECTIVO: 'Devuelve el efectivo de la caja.',
-  MERCADO_PAGO: 'Recuerda hacer la devolución en la app de Mercado Pago.',
-};
-
 /** "¿Anular venta de $8.000 (Efectivo)?" — the amount charged, tip included. */
 export function voidQuestion(sale: SaleResponse): string {
   return `¿Anular venta de ${formatClp(sale.amountToCharge)} (${PAYMENT_METHOD_LABELS[sale.paymentMethod]})?`;
 }
 
-/** Shown once the void is recorded, reminding how to give the money back. */
-export function voidedNotice(sale: SaleResponse): string {
-  const amount = formatClp(sale.amountToCharge);
-  return sale.paymentMethod === 'EFECTIVO'
-    ? `Venta anulada. Devuelve ${amount} en efectivo de la caja.`
-    : `Venta anulada. Devuelve ${amount} en la app de Mercado Pago.`;
+/** Shown once a sale is voided: no money moves (cash given back is a refund). */
+export const SALE_VOIDED_NOTICE = 'Venta anulada.';
+
+/** Shown once a refund is recorded, repeating what to hand over. */
+export function refundNotice(amount: number): string {
+  return `Devolución registrada. Entrega ${formatClp(amount)} de la caja.`;
 }
+
+/** Shown once a refund entered by mistake is voided. */
+export const REFUND_VOIDED_NOTICE = 'Devolución anulada.';

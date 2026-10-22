@@ -129,11 +129,15 @@
 @if (recentOpen()) {
   <app-recent-sales-sheet
     [sales]="recentSales.hasValue() ? recentSales.value() : []"
-    [loading]="recentSales.isLoading()"
+    [refunds]="recentRefunds.hasValue() ? recentRefunds.value() : []"
+    [loading]="recentSales.isLoading() || recentRefunds.isLoading()"
     [error]="recentSales.error() ? recentErrorMessage() : null"
+    [refundsError]="!!recentRefunds.error()"
     [hasOpenEvent]="!!openEvent()"
     (voidRequested)="startVoid($event)"
-    (retry)="recentSales.reload()"
+    (refundRequested)="startRefund()"
+    (refundVoidRequested)="startVoidRefund($event)"
+    (retry)="reloadRecent()"
     (closed)="closeRecent()"
   />
 }
@@ -148,9 +152,28 @@
   />
 }
 
-@if (voidNotice(); as notice) {
+@if (refunding()) {
+  <app-refund-dialog
+    [submitting]="refundSubmitting()"
+    [error]="refundError()"
+    (confirmed)="confirmRefund($event)"
+    (cancelled)="cancelRefund()"
+  />
+}
+
+@if (voidingRefund(); as refund) {
+  <app-void-refund-dialog
+    [refund]="refund"
+    [submitting]="voidRefundSubmitting()"
+    [error]="voidRefundError()"
+    (confirmed)="confirmVoidRefund()"
+    (cancelled)="cancelVoidRefund()"
+  />
+}
+
+@if (notice(); as message) {
   <div class="toast" role="status">
-    <p>{{ notice }}</p>
-    <button type="button" aria-label="Cerrar aviso" (click)="voidNotice.set(null)">✕</button>
+    <p>{{ message }}</p>
+    <button type="button" aria-label="Cerrar aviso" (click)="notice.set(null)">✕</button>
   </div>
 }

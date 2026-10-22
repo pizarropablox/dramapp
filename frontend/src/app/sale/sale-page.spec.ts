@@ -9,6 +9,7 @@ import {
   STOP_WITHOUT_EVENT_MS,
 } from '../event/current-event-store';
 import { EventResponse } from '../event/event';
+import { RefundResponse } from '../refund/refund';
 import { ProductResponse } from '../product/product';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { SaleResponse } from './sale';
@@ -729,6 +730,16 @@ describe('SalePage', () => {
       voidReason: null,
     };
 
+    const REFUND: RefundResponse = {
+      id: 7,
+      eventId: OPEN_EVENT.id,
+      amount: 15000,
+      reason: 'se acabó el Jack',
+      status: 'ACTIVE',
+      createdAt: '2026-10-31T23:30:00Z',
+      voidedAt: null,
+    };
+
     function voided(sale: SaleResponse, reason: string | null = null): SaleResponse {
       return { ...sale, status: 'VOIDED', voidedAt: '2026-10-31T23:18:00Z', voidReason: reason };
     }
@@ -772,16 +783,25 @@ describe('SalePage', () => {
       TestBed.tick();
     }
 
-    async function openRecent(sales: SaleResponse[]): Promise<void> {
-      // Not tap(): whenStable() would wait for the request this test has to answer.
+    async function openRecent(
+      sales: SaleResponse[],
+      refunds: RefundResponse[] = [],
+    ): Promise<void> {
+      // Not tap(): whenStable() would wait for the requests this test has to answer.
       button('Ventas').click();
       TestBed.tick();
       httpTesting.expectOne('/api/sales').flush(sales);
+      httpTesting.expectOne('/api/refunds').flush(refunds);
       await fixture.whenStable();
     }
 
     function rows(): HTMLElement[] {
       return Array.from(sheet()!.querySelectorAll<HTMLElement>('li.sale'));
+    }
+
+    /** Sales and refunds, in the order shown. */
+    function entries(): HTMLElement[] {
+      return Array.from(sheet()!.querySelectorAll<HTMLElement>('li.sale, li.refund'));
     }
 
     describe('from the confirmation', () => {
@@ -794,7 +814,7 @@ describe('SalePage', () => {
         expect(button('Anular esta venta').classList).toContain('void');
       });
 
-      it('asks to confirm with the amount charged, tip included, and the cash reminder', async () => {
+      it('asks to confirm with the amount charged, tip included, pointing to Devolución', async () => {
         await registerSale();
 
         await tap(button('Anular esta venta'));
@@ -805,12 +825,16 @@ describe('SalePage', () => {
         expect(voidDialog()!.textContent).toContain(
           '20:15 · 1× Jack Daniels Original · 1× Red Bull',
         );
-        expect(voidDialog()!.textContent).toContain('Devuelve el efectivo de la caja.');
-        expect(voidDialog()!.textContent).not.toContain('Mercado Pago');
+        expect(voidDialog()!.querySelector('.help')?.textContent).toBe(
+          '¿Hay que devolver plata? Usa Devolución',
+        );
+        // Voiding moves no money: no reminder to give anything back.
+        expect(voidDialog()!.textContent).not.toContain('Devuelve');
+        expect(voidDialog()!.querySelectorAll('input')).toHaveLength(1);
         expect(document.activeElement?.textContent?.trim()).toBe('Volver');
       });
 
-      it('reminds to refund in the Mercado Pago app for Mercado Pago sales', async () => {
+      it('never mentions a Mercado Pago refund for Mercado Pago sales', async () => {
         await registerSale({ ...CASH_SALE, paymentMethod: 'MERCADO_PAGO' });
 
         await tap(button('Anular esta venta'));
@@ -818,10 +842,7 @@ describe('SalePage', () => {
         expect(voidDialog()!.querySelector('h2')?.textContent).toBe(
           '¿Anular venta de $8.000 (Mercado Pago)?',
         );
-        expect(voidDialog()!.textContent).toContain(
-          'Recuerda hacer la devolución en la app de Mercado Pago.',
-        );
-        expect(voidDialog()!.textContent).not.toContain('Devuelve el efectivo');
+        expect(voidDialog()!.textContent).not.toContain('app de Mercado Pago');
       });
 
       it('goes back without voiding', async () => {
@@ -858,9 +879,7 @@ describe('SalePage', () => {
         expect(voidDialog()).toBeNull();
         expect(confirmation()).toBeNull();
         expect(toast()?.getAttribute('role')).toBe('status');
-        expect(toast()?.textContent).toContain(
-          'Venta anulada. Devuelve $8.000 en efectivo de la caja.',
-        );
+        expect(toast()?.querySelector('p')?.textContent).toBe('Venta anulada.');
 
         await tap(toast()!.querySelector<HTMLButtonElement>('button[aria-label="Cerrar aviso"]')!);
         expect(toast()).toBeNull();
@@ -1020,9 +1039,7 @@ describe('SalePage', () => {
         expect(rows()[0].textContent).toContain('Motivo: cliente se arrepintió');
         expect(rows()[0].querySelector('button.void')).toBeNull();
         expect(rows()[1].classList).not.toContain('voided');
-        expect(toast()?.textContent).toContain(
-          'Venta anulada. Devuelve $5.000 en la app de Mercado Pago.',
-        );
+        expect(toast()?.querySelector('p')?.textContent).toBe('Venta anulada.');
       });
 
       it('reloads the list on 409, as another phone may have voided the sale', async () => {
@@ -1073,13 +1090,32 @@ describe('SalePage', () => {
         expect(rows()).toHaveLength(1);
       });
 
+      it('reloads sales and refunds on "Reintentar"', async () => {
+        await setup();
+        button('Ventas').click();
+        TestBed.tick();
+        httpTesting
+          .expectOne('/api/sales')
+          .flush({ status: 500, detail: 'Error interno.' }, { status: 500, statusText: 'Error' });
+        httpTesting.expectOne('/api/refunds').flush([]);
+        await fixture.whenStable();
+
+        button('Reintentar').click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush([CASH_SALE]);
+        httpTesting.expectOne('/api/refunds').flush([REFUND]);
+        await fixture.whenStable();
+
+        expect(entries()).toHaveLength(2);
+      });
+
       it('links to the totals', async () => {
         await setup();
 
         await openRecent([]);
 
         const link = sheet()!.querySelector<HTMLAnchorElement>('a.totals')!;
-        expect(link.textContent?.trim()).toBe('Ver totales →');
+        expect(link.textContent?.trim()).toBe('Totales →');
         expect(link.getAttribute('href')).toBe('/totales');
       });
 
@@ -1115,14 +1151,238 @@ describe('SalePage', () => {
             { status: 500, detail: 'Error interno.' },
             { status: 500, statusText: 'Server Error' },
           );
+        httpTesting.expectOne('/api/refunds').flush([]);
         await fixture.whenStable();
 
         expect(sheet()!.querySelector('[role="alert"]')?.textContent).toContain('Error interno.');
         button('Reintentar').click();
         TestBed.tick();
         httpTesting.expectOne('/api/sales').flush([CASH_SALE]);
+        httpTesting.expectOne('/api/refunds').flush([]);
         await fixture.whenStable();
         expect(rows()).toHaveLength(1);
+      });
+    });
+
+    describe('refunds', () => {
+      function refundDialog(): HTMLElement | null {
+        return root().querySelector('app-refund-dialog [role="dialog"]');
+      }
+
+      function voidRefundDialog(): HTMLElement | null {
+        return root().querySelector('app-void-refund-dialog [role="alertdialog"]');
+      }
+
+      function refundRows(): HTMLElement[] {
+        return Array.from(sheet()!.querySelectorAll<HTMLElement>('li.refund'));
+      }
+
+      async function type(input: HTMLInputElement, value: string): Promise<void> {
+        input.value = value;
+        input.dispatchEvent(new Event('input'));
+        await fixture.whenStable();
+      }
+
+      async function fillRefund(amount: string, reason: string): Promise<void> {
+        const [amountInput, reasonInput] = Array.from(
+          refundDialog()!.querySelectorAll<HTMLInputElement>('input'),
+        );
+        await type(amountInput, amount);
+        await type(reasonInput, reason);
+      }
+
+      it('offers "Devolución" next to the title, for barra too, with an open event', async () => {
+        await setup();
+
+        await openRecent([]);
+
+        const header = sheet()!.querySelector('.header')!;
+        expect(Array.from(header.children).map((child) => child.textContent?.trim())).toEqual([
+          'Últimas ventas',
+          'Devolución',
+          'Totales →',
+        ]);
+      });
+
+      it('hides "Devolución" without an open event', async () => {
+        await setup(null);
+
+        await openRecent([]);
+
+        expect(sheet()!.querySelector('button.start-refund')).toBeNull();
+      });
+
+      it('mixes sales and refunds by time, newest first', async () => {
+        await setup();
+
+        await openRecent(
+          [
+            { ...CASH_SALE, id: 1, createdAt: '2026-10-31T23:40:00Z' },
+            { ...CASH_SALE, id: 2, createdAt: '2026-10-31T23:10:00Z' },
+          ],
+          [
+            { ...REFUND, id: 7, createdAt: '2026-10-31T23:30:00.250Z' },
+            { ...REFUND, id: 8, createdAt: '2026-11-01T00:05:00Z', reason: 'la última' },
+          ],
+        );
+
+        expect(
+          entries().map(
+            (entry) => `${entry.className} ${entry.querySelector('time')?.textContent}`,
+          ),
+        ).toEqual(['refund 21:05', 'sale 20:40', 'refund 20:30', 'sale 20:10']);
+        const [latest] = refundRows();
+        expect(latest.textContent).toContain('Devolución');
+        expect(latest.textContent).toContain('Motivo: la última');
+        expect(latest.querySelector('.amount')?.textContent).toBe('−$15.000');
+        expect(latest.querySelector('button.void')).not.toBeNull();
+      });
+
+      it('shows a voided refund struck through, without "Anular"', async () => {
+        await setup();
+
+        await openRecent([], [{ ...REFUND, status: 'VOIDED', voidedAt: '2026-10-31T23:35:00Z' }]);
+
+        const [row] = refundRows();
+        expect(row.classList).toContain('voided');
+        expect(row.querySelector('.badge')?.textContent).toBe('Anulada 20:35');
+        expect(row.querySelector('button.void')).toBeNull();
+      });
+
+      it('still shows the sales when the refunds fail to load', async () => {
+        await setup();
+        button('Ventas').click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush([CASH_SALE]);
+        // A backend older than DRAMA-41 denies the unknown endpoint.
+        httpTesting
+          .expectOne('/api/refunds')
+          .flush({ status: 403, detail: 'Sin permiso.' }, { status: 403, statusText: 'Forbidden' });
+        await fixture.whenStable();
+
+        expect(rows()).toHaveLength(1);
+        expect(sheet()!.querySelector('.warning')?.textContent).toBe(
+          'No se pudieron cargar las devoluciones.',
+        );
+      });
+
+      it('records a refund, lists it on top and reminds what to hand over', async () => {
+        await setup();
+        await openRecent([CASH_SALE]);
+
+        await tap(button('Devolución'));
+        expect(refundDialog()!.querySelector('h2')?.textContent).toBe('Devolución de efectivo');
+        await fillRefund('15000', '  se acabó el Jack ');
+        const confirm = button('Entregar $15.000 de la caja');
+        confirm.click();
+        TestBed.tick();
+        confirm.click();
+        TestBed.tick();
+
+        expect(confirm.textContent?.trim()).toBe('Registrando…');
+        const request = httpTesting.expectOne('/api/refunds');
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({ amount: 15000, reason: 'se acabó el Jack' });
+        request.flush({ ...REFUND, id: 9, createdAt: '2026-11-01T00:30:00Z' });
+        await fixture.whenStable();
+
+        expect(refundDialog()).toBeNull();
+        expect(entries()[0].classList).toContain('refund');
+        expect(toast()?.querySelector('p')?.textContent).toBe(
+          'Devolución registrada. Entrega $15.000 de la caja.',
+        );
+      });
+
+      it('keeps the dialog open with the detail when the event was closed', async () => {
+        await setup();
+        await openRecent([]);
+        await tap(button('Devolución'));
+        await fillRefund('15000', 'prueba');
+
+        button('Entregar $15.000 de la caja').click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/refunds').flush(
+          {
+            title: 'Sin evento abierto',
+            status: 409,
+            detail: 'No hay un evento abierto. Abre un evento antes de registrar devoluciones.',
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        TestBed.tick();
+        httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+        await fixture.whenStable();
+
+        expect(refundDialog()!.querySelector('[role="alert"]')?.textContent).toBe(
+          'No hay un evento abierto. Abre un evento antes de registrar devoluciones.',
+        );
+        expect(toast()).toBeNull();
+      });
+
+      it('closes only the refund dialog on Escape', async () => {
+        await setup();
+        await openRecent([]);
+        await tap(button('Devolución'));
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await fixture.whenStable();
+
+        expect(refundDialog()).toBeNull();
+        expect(sheet()).not.toBeNull();
+        httpTesting.expectNone('/api/refunds');
+      });
+
+      it('voids a refund entered by mistake and shows it struck through', async () => {
+        await setup();
+        await openRecent([], [REFUND]);
+
+        await tap(refundRows()[0].querySelector<HTMLButtonElement>('button.void')!);
+        expect(voidRefundDialog()!.querySelector('h2')?.textContent).toBe(
+          '¿Anular devolución de $15.000?',
+        );
+        expect(voidRefundDialog()!.textContent).toContain('20:30 · Motivo: se acabó el Jack');
+        expect(voidRefundDialog()!.textContent).toContain('Solo si se ingresó mal.');
+        expect(document.activeElement?.textContent?.trim()).toBe('Volver');
+        button('Anular devolución').click();
+        TestBed.tick();
+        const request = httpTesting.expectOne('/api/refunds/7/void');
+        expect(request.request.method).toBe('POST');
+        request.flush({ ...REFUND, status: 'VOIDED', voidedAt: '2026-10-31T23:35:00Z' });
+        await fixture.whenStable();
+
+        expect(voidRefundDialog()).toBeNull();
+        expect(refundRows()[0].classList).toContain('voided');
+        expect(refundRows()[0].querySelector('button.void')).toBeNull();
+        expect(toast()?.querySelector('p')?.textContent).toBe('Devolución anulada.');
+      });
+
+      it('reloads the refunds on 409, as another phone may have voided it', async () => {
+        await setup();
+        await openRecent([], [REFUND]);
+        await tap(refundRows()[0].querySelector<HTMLButtonElement>('button.void')!);
+
+        button('Anular devolución').click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/refunds/7/void').flush(
+          {
+            title: 'Devolución ya anulada',
+            status: 409,
+            detail: 'La devolución 7 ya está anulada (a las 20:35).',
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        TestBed.tick();
+        httpTesting
+          .expectOne('/api/refunds')
+          .flush([{ ...REFUND, status: 'VOIDED', voidedAt: '2026-10-31T23:35:00Z' }]);
+        httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+        await fixture.whenStable();
+
+        expect(voidRefundDialog()!.querySelector('[role="alert"]')?.textContent).toBe(
+          'La devolución 7 ya está anulada (a las 20:35).',
+        );
+        await tap(button('Volver'));
+        expect(refundRows()[0].classList).toContain('voided');
       });
     });
   });

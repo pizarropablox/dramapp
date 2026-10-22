@@ -1,5 +1,11 @@
 import { SaleResponse } from './sale';
-import { REFUND_REMINDERS, saleSummary, voidedNotice, voidQuestion } from './sale-format';
+import {
+  REFUND_VOIDED_NOTICE,
+  refundNotice,
+  SALE_VOIDED_NOTICE,
+  saleSummary,
+  voidQuestion,
+} from './sale-format';
 
 const SALE: SaleResponse = {
   id: 501,
@@ -44,14 +50,12 @@ describe('sale format', () => {
     );
   });
 
-  it('reminds how to give the money back by payment method', () => {
-    expect(REFUND_REMINDERS.EFECTIVO).toBe('Devuelve el efectivo de la caja.');
-    expect(REFUND_REMINDERS.MERCADO_PAGO).toBe(
-      'Recuerda hacer la devolución en la app de Mercado Pago.',
-    );
-    expect(voidedNotice(SALE)).toBe('Venta anulada. Devuelve $8.000 en efectivo de la caja.');
-    expect(voidedNotice({ ...SALE, paymentMethod: 'MERCADO_PAGO' })).toBe(
-      'Venta anulada. Devuelve $8.000 en la app de Mercado Pago.',
-    );
+  it('confirms a void without asking to move money', () => {
+    expect(SALE_VOIDED_NOTICE).toBe('Venta anulada.');
+  });
+
+  it('repeats the amount to hand over once a refund is recorded', () => {
+    expect(refundNotice(15000)).toBe('Devolución registrada. Entrega $15.000 de la caja.');
+    expect(REFUND_VOIDED_NOTICE).toBe('Devolución anulada.');
   });
 });
