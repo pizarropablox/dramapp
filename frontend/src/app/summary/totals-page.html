@@ -47,15 +47,20 @@
 
       <section class="money" aria-label="Totales">
         @for (method of current.byPaymentMethod; track method.paymentMethod) {
-          <div class="total-row" [attr.data-method]="method.paymentMethod">
+          <div class="total-row expected" [attr.data-method]="method.paymentMethod">
             <p class="line">
-              <span class="label">{{ labels[method.paymentMethod] }}</span>
-              <strong class="amount">{{ method.total | clp }}</strong>
+              <span class="label">{{ expectedLabels[method.paymentMethod] }}</span>
+              <strong class="amount" [class.negative]="method.expected < 0">{{
+                method.expected | clp
+              }}</strong>
             </p>
             <p class="detail">
               {{ method.salesCount }} {{ method.salesCount === 1 ? 'venta' : 'ventas' }} · Vendido
               {{ method.sold | clp }} + Propina {{ method.tips | clp }}
             </p>
+            @if (method.refunds > 0) {
+              <p class="detail refunds">Devoluciones {{ -method.refunds | clp }}</p>
+            }
           </div>
         }
         <div class="total-row overall">
@@ -66,6 +71,12 @@
           <p class="detail">
             Vendido {{ current.overall.sold | clp }} + Propina {{ current.overall.tips | clp }}
           </p>
+          @if (current.overall.refunds > 0) {
+            <p class="detail refunds">
+              Devoluciones {{ -current.overall.refunds | clp }} · Neto
+              {{ current.overall.expected | clp }}
+            </p>
+          }
         </div>
       </section>
 
@@ -121,6 +132,14 @@
               <dd>{{ voided.count }} · {{ voided.amount | clp }}</dd>
             </div>
           }
+          <div class="refunds">
+            <dt>Devoluciones</dt>
+            <dd>{{ current.refunds.count }} · {{ -current.refunds.amount | clp }}</dd>
+          </div>
+          <div class="sub">
+            <dt>Anuladas</dt>
+            <dd>{{ current.refunds.voidedCount }} · {{ current.refunds.voidedAmount | clp }}</dd>
+          </div>
         </dl>
       </section>
     </main>

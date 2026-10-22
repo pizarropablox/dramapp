@@ -8,7 +8,7 @@ import { CurrentEventStore } from '../event/current-event-store';
 import { partyDate, suggestedEventName } from '../event/event-date';
 import { EventService } from '../event/event.service';
 import { Subscription } from 'rxjs';
-import { PAYMENT_METHOD_LABELS } from '../sale/sale';
+import { PAYMENT_METHOD_LABELS, PaymentMethod } from '../sale/sale';
 import { SINGLE_VARIANT_NAME } from '../sale/sale-format';
 import { errorMessage } from '../shared/api-error';
 import { ClpPipe } from '../shared/clp';
@@ -17,6 +17,12 @@ import { EventSummaryResponse, ProductUnits } from './summary';
 import { CloseEventDialog } from './close-event-dialog';
 import { OpenEventDialog } from './open-event-dialog';
 import { SummaryService } from './summary.service';
+
+/** What each payment method's big amount is compared with at closing. */
+export const EXPECTED_LABELS: Record<PaymentMethod, string> = {
+  MERCADO_PAGO: 'Esperado en Mercado Pago',
+  EFECTIVO: 'Esperado en caja',
+};
 
 /** How often an open event's totals are refreshed. */
 export const REFRESH_INTERVAL_MS = 10_000;
@@ -66,6 +72,7 @@ export class TotalsPage {
   private readonly now = signal(Date.now());
 
   protected readonly labels = PAYMENT_METHOD_LABELS;
+  protected readonly expectedLabels = EXPECTED_LABELS;
   protected readonly time = formatTime;
   protected readonly isOpen = computed(() => this.summary()?.event.status === 'OPEN');
   protected readonly canOpen = computed(

@@ -103,6 +103,17 @@ main {
   white-space: nowrap;
 }
 
+// "Esperado en Mercado Pago" and $1.250.000 do not fit side by side at 375px: in both expected cards the
+// amount goes under the title.
+.expected .line {
+  display: grid;
+}
+
+// The till can be expected to be short: refunds came out of it.
+.amount.negative {
+  color: var(--danger-text);
+}
+
 .detail {
   color: var(--muted);
   font-size: 0.85rem;
@@ -212,6 +223,12 @@ details[open] summary .name::before {
     padding-left: 1rem;
     color: var(--muted);
     font-size: 0.9rem;
+  }
+
+  .refunds {
+    margin-top: 0.25rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--border);
   }
 }
 
