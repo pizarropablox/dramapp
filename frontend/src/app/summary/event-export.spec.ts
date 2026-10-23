@@ -3,6 +3,7 @@ import {
   downloadFile,
   FALLBACK_FILE_NAME,
   fileNameFromDisposition,
+  fileShareData,
   OBJECT_URL_LIFETIME_MS,
   XLSX_TYPE,
 } from './event-export';
@@ -28,6 +29,14 @@ describe('fileNameFromDisposition', () => {
   it('falls back when there is no name', () => {
     expect(fileNameFromDisposition(null)).toBe(FALLBACK_FILE_NAME);
     expect(fileNameFromDisposition('attachment')).toBe(FALLBACK_FILE_NAME);
+  });
+});
+
+describe('fileShareData', () => {
+  it('shares the file only, with no title, text or url (iOS saves those as a .txt)', () => {
+    const file = new File(['x'], '2026-10-31_DRAMA.xlsx', { type: XLSX_TYPE });
+
+    expect(fileShareData(file)).toStrictEqual({ files: [file] });
   });
 });
 

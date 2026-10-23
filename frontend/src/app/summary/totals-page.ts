@@ -13,7 +13,7 @@ import { SINGLE_VARIANT_NAME } from '../sale/sale-format';
 import { errorMessage } from '../shared/api-error';
 import { ClpPipe } from '../shared/clp';
 import { formatTime } from '../shared/time';
-import { canShareFile, downloadFile } from './event-export';
+import { canShareFile, downloadFile, fileShareData } from './event-export';
 import { EventSummaryResponse, ProductUnits } from './summary';
 import { CloseEventDialog } from './close-event-dialog';
 import { OpenEventDialog } from './open-event-dialog';
@@ -249,7 +249,7 @@ export class TotalsPage {
       return;
     }
     try {
-      await navigator.share({ files: [file], title: file.name });
+      await navigator.share(fileShareData(file));
       this.exportReady.set(null);
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'AbortError') {
