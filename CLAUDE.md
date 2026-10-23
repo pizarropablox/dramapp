@@ -41,6 +41,12 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - Tests: `@WithMockUser(roles = "BARRA" | "ADMIN")` en tests de controladores; `PostgresIntegrationTest` define las claves de test.
 - Frontend: `authGuard`/`adminGuard` en las rutas; ante un 401, `authInterceptor` vuelve al login sin recargar (el carrito se conserva).
 
+## Exportación a Excel (DRAMA-42)
+
+- `GET /api/events/{id}/export` (solo `admin`) genera el `.xlsx` en el backend con fastexcel (no Apache POI: pesa ~18 MB). El Resumen sale de `EventSummaryService` en la misma transacción `REPEATABLE_READ`: nunca recalcular los totales aparte.
+- Las filas de «Para BARRA» se buscan por nombre de producto y variante (`BarraRows`), en el orden de la planilla. Renombrar un producto mueve sus ventas al final; actualizar ahí el mapeo.
+- El frontend lo descarga con `HttpClient` como blob: en iPhone por la hoja de compartir (segundo toque), y en el resto con `<a download>`.
+
 ## PWA (DRAMA-32)
 
 - `@angular/service-worker` cachea solo la app (`frontend/ngsw-config.json`). **Nunca** agregar `dataGroups` ni cachear `/api/**`: totales y ventas siempre vienen de la red (`pwa-config.spec.ts` lo vigila).
