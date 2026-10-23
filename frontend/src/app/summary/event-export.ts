@@ -25,13 +25,21 @@ export function fileNameFromDisposition(header: string | null): string {
 }
 
 /**
+ * What is shared: the file and nothing else. iOS saves a title, text or url as a separate .txt next to the
+ * Excel in "Guardar en Archivos" (DRAMA-47). canShareFile() asks about this very object.
+ */
+export function fileShareData(file: File): ShareData {
+  return { files: [file] };
+}
+
+/**
  * Whether the share sheet takes this file. True on iPhone (Safari 15+, also as an installed PWA), where it offers
  * "Guardar en Archivos"; false on Chrome for Android, whose share list has no .xlsx, and on http:// (it needs
  * HTTPS). Then the file is downloaded instead.
  */
 export function canShareFile(navigator: Navigator | undefined, file: File): boolean {
   try {
-    return typeof navigator?.canShare === 'function' && navigator.canShare({ files: [file] });
+    return typeof navigator?.canShare === 'function' && navigator.canShare(fileShareData(file));
   } catch {
     return false;
   }

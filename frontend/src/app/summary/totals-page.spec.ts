@@ -910,7 +910,8 @@ describe('TotalsPage', () => {
 
     it('waits for a second tap to open the share sheet where it can be shared (iPhone)', async () => {
       const share = vi.fn().mockResolvedValue(undefined);
-      Object.assign(navigator, { canShare: () => true, share });
+      const canShare = vi.fn(() => true);
+      Object.assign(navigator, { canShare, share });
       signIn('ADMIN');
       setup();
 
@@ -924,8 +925,13 @@ describe('TotalsPage', () => {
       ready.click();
       await vi.waitFor(() => expect(share).toHaveBeenCalled());
       const shared = share.mock.calls[0][0] as ShareData;
+      // Only the file: a title, text or url is saved by iOS as an extra .txt (DRAMA-47).
+      expect(Object.keys(shared)).toEqual(['files']);
+      expect(shared.files).toHaveLength(1);
       expect(shared.files?.[0].name).toBe(FILE_NAME);
       expect(shared.files?.[0].type).toBe(XLSX_TYPE);
+      // What was shared is exactly what canShare approved.
+      expect(canShare).toHaveBeenCalledWith(shared);
       await vi.waitFor(() => {
         TestBed.tick();
         expect(exportButton()!.textContent?.trim()).toBe('Descargar Excel');
