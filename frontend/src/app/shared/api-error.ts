@@ -16,6 +16,29 @@ function isProblemDetail(body: unknown): body is ProblemDetail {
   return typeof body === 'object' && body !== null && 'detail' in body;
 }
 
+/**
+ * A request made with responseType 'blob' (a file download) gets its error body as a Blob too: read it back as
+ * JSON so errorMessage() finds the ProblemDetail. Anything else is returned as it is.
+ */
+export async function withJsonErrorBody(error: unknown): Promise<unknown> {
+  if (!(error instanceof HttpErrorResponse) || !(error.error instanceof Blob)) {
+    return error;
+  }
+  let body: unknown = null;
+  try {
+    body = JSON.parse(await error.error.text());
+  } catch {
+    // Not JSON (e.g. a proxy's HTML page): no detail to show.
+  }
+  return new HttpErrorResponse({
+    error: body,
+    headers: error.headers,
+    status: error.status,
+    statusText: error.statusText,
+    url: error.url ?? undefined,
+  });
+}
+
 /** Message to show the cashier for a failed request: the backend's detail when there is one. */
 export function errorMessage(error: unknown): string {
   if (error instanceof HttpErrorResponse) {

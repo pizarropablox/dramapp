@@ -305,6 +305,45 @@ details[open] summary .name::before {
   text-align: center;
 }
 
+// admin only, after the control block: a secondary button, well apart from "Cerrar evento" at the very end.
+.export {
+  display: grid;
+  gap: 0.4rem;
+
+  h2 {
+    margin-bottom: 0;
+  }
+}
+
+.export-button {
+  min-height: 3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+
+  &:disabled {
+    color: var(--muted);
+  }
+
+  // iPhone: the file is ready, one more tap opens the share sheet.
+  &.ready {
+    border: 2px solid var(--accent);
+  }
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.export-error {
+  color: var(--danger-text);
+  font-size: 0.9rem;
+}
+
 // admin only: last thing on the page, outlined (not filled) so it does not invite a tap.
 .close-zone {
   display: grid;

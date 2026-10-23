@@ -142,6 +142,39 @@
           </div>
         </dl>
       </section>
+
+      @if (canExport()) {
+        <section class="export" aria-labelledby="export-title">
+          <h2 id="export-title">Excel</h2>
+          @if (exportReady(); as file) {
+            <button type="button" class="export-button ready" (click)="shareExport()">
+              Guardar Excel
+            </button>
+            <p class="hint">
+              {{ file.name }} está listo. Elige «Guardar en Archivos» o dónde enviarlo.
+            </p>
+          } @else {
+            <button
+              type="button"
+              class="export-button"
+              [disabled]="exporting()"
+              [attr.aria-busy]="exporting()"
+              (click)="startExport()"
+            >
+              {{ exporting() ? 'Preparando Excel…' : 'Descargar Excel' }}
+            </button>
+            <p class="hint">
+              Resumen, Para BARRA, ventas y devoluciones.
+              @if (isOpen()) {
+                Con el evento abierto, son las cifras de este momento.
+              }
+            </p>
+          }
+          @if (exportError(); as message) {
+            <p class="export-error" role="alert">{{ message }}</p>
+          }
+        </section>
+      }
     </main>
 
     <footer class="status">
