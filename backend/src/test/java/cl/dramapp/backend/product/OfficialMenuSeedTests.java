@@ -30,14 +30,14 @@ class OfficialMenuSeedTests extends PostgresIntegrationTest {
 	}
 
 	@Test
-	void seedsThirteenProductsInMenuOrder() {
+	void keepsThirteenProductsInMenuOrderWithTheGenericPiscolaInactive() {
 		assertThat(menu())
 			.extracting(Product::getSortOrder, Product::getName, Product::isActive)
 			.containsExactly(
 					tuple(1, "Cerveza", true),
-					tuple(2, "Piscola", true),
-					tuple(3, "Piscola Alto del Carmen", false),
-					tuple(4, "Piscola Mistral", false),
+					tuple(2, "Piscola", false),
+					tuple(3, "Piscola Alto", true),
+					tuple(4, "Piscola Mistral", true),
 					tuple(5, "Tropical Gin", true),
 					tuple(6, "Gin + Bebida", true),
 					tuple(7, "Tequila", true),
@@ -50,13 +50,14 @@ class OfficialMenuSeedTests extends PostgresIntegrationTest {
 	}
 
 	@Test
-	void activeProductsHaveTheirPricesAndPromosInMenuOrder() {
+	void activeProductsHaveTheOfficialOctoberPricesAndPromosInMenuOrder() {
 		assertThat(menu().stream().filter(Product::isActive).toList())
 			.extracting(Product::getName, Product::getUnitPrice, Product::getPromoQuantity, Product::getPromoPrice)
 			.containsExactly(
 					tuple("Cerveza", 3000L, 2, 5000L),
-					tuple("Piscola", 5500L, 3, 13000L),
-					tuple("Tropical Gin", 8500L, 2, 15000L),
+					tuple("Piscola Alto", 5000L, 3, 12000L),
+					tuple("Piscola Mistral", 6000L, 3, 14000L),
+					tuple("Tropical Gin", 8500L, 2, 14000L),
 					tuple("Gin + Bebida", 6000L, 2, 11000L),
 					tuple("Tequila", 3000L, 3, 8000L),
 					tuple("Ballantine", 7000L, 2, 13000L),
@@ -68,12 +69,15 @@ class OfficialMenuSeedTests extends PostgresIntegrationTest {
 	}
 
 	@Test
-	void inactivePiscoProductsKeepTheirPrices() {
+	void theGenericPiscolaIsTheOnlyInactiveProductAndKeepsItsPrice() {
 		assertThat(menu().stream().filter(product -> !product.isActive()).toList())
 			.extracting(Product::getName, Product::getUnitPrice, Product::getPromoQuantity, Product::getPromoPrice)
-			.containsExactly(
-					tuple("Piscola Alto del Carmen", 5000L, 3, 12000L),
-					tuple("Piscola Mistral", 5500L, 3, 13000L));
+			.containsExactly(tuple("Piscola", 5500L, 3, 13000L));
+	}
+
+	@Test
+	void theOldAltoDelCarmenNameIsGone() {
+		assertThat(menu()).extracting(Product::getName).doesNotContain("Piscola Alto del Carmen");
 	}
 
 	@Test

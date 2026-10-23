@@ -14,9 +14,9 @@ class PriceCalculatorTests {
 
 	private static final ProductPrice CERVEZA = new ProductPrice(1, 3000, 2, 5000L);
 
-	private static final ProductPrice PISCOLA = new ProductPrice(2, 5500, 3, 13000L);
+	private static final ProductPrice PISCOLA_MISTRAL = new ProductPrice(4, 6000, 3, 14000L);
 
-	private static final ProductPrice TROPICAL_GIN = new ProductPrice(5, 8500, 2, 15000L);
+	private static final ProductPrice TROPICAL_GIN = new ProductPrice(5, 8500, 2, 14000L);
 
 	private static final ProductPrice JACK_DANIELS = new ProductPrice(9, 8500, 2, 15000L);
 
@@ -24,22 +24,22 @@ class PriceCalculatorTests {
 
 	@Test
 	void exactPromoQuantityCostsThePromoPrice() {
-		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA, 3)))).isEqualTo(13000);
+		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA_MISTRAL, 3)))).isEqualTo(14000);
 	}
 
 	@Test
 	void unitsBeyondThePromoAreChargedAtUnitPrice() {
-		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA, 4)))).isEqualTo(18500);
+		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA_MISTRAL, 4)))).isEqualTo(20000);
 	}
 
 	@Test
 	void multiplePromosApply() {
-		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA, 6)))).isEqualTo(26000);
+		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA_MISTRAL, 6)))).isEqualTo(28000);
 	}
 
 	@Test
 	void oddQuantityOfTwoForPromo() {
-		assertThat(PriceCalculator.subtotal(List.of(new Item(TROPICAL_GIN, 3)))).isEqualTo(23500);
+		assertThat(PriceCalculator.subtotal(List.of(new Item(TROPICAL_GIN, 3)))).isEqualTo(22500);
 	}
 
 	@Test
@@ -59,14 +59,14 @@ class PriceCalculatorTests {
 	void eachProductAppliesItsOwnRuleAndPromosNeverMixProducts() {
 		Item cervezaNormal = new Item(CERVEZA, 1);
 		Item cervezaSinAlcohol = new Item(CERVEZA, 1);
-		Item piscola = new Item(PISCOLA, 1);
+		Item piscolaMistral = new Item(PISCOLA_MISTRAL, 1);
 
-		assertThat(PriceCalculator.subtotal(List.of(cervezaNormal, cervezaSinAlcohol, piscola))).isEqualTo(10500);
+		assertThat(PriceCalculator.subtotal(List.of(cervezaNormal, cervezaSinAlcohol, piscolaMistral))).isEqualTo(11000);
 	}
 
 	@Test
 	void unitsBelowThePromoQuantityAreChargedAtUnitPrice() {
-		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA, 2)))).isEqualTo(11000);
+		assertThat(PriceCalculator.subtotal(List.of(new Item(PISCOLA_MISTRAL, 2)))).isEqualTo(12000);
 	}
 
 	@Test
@@ -79,7 +79,7 @@ class PriceCalculatorTests {
 
 	@Test
 	void rejectsNonPositiveUnits() {
-		assertThatThrownBy(() -> PriceCalculator.productSubtotal(PISCOLA, 0))
+		assertThatThrownBy(() -> PriceCalculator.productSubtotal(PISCOLA_MISTRAL, 0))
 			.isInstanceOf(IllegalArgumentException.class);
 	}
 
