@@ -27,13 +27,13 @@ class ProductControllerTests extends PostgresIntegrationTest {
 	private ProductRepository productRepository;
 
 	@Test
-	void listsTheElevenActiveProductsInMenuOrder() {
+	void listsTheTwelveActiveProductsInMenuOrder() {
 		var result = mvc.get().uri("/api/products").exchange();
 
 		assertThat(result).hasStatus(HttpStatus.OK).hasContentTypeCompatibleWith(MediaType.APPLICATION_JSON);
 		assertThat(result).bodyJson().extractingPath("$[*].name").asArray().containsExactly(
-				"Cerveza", "Piscola", "Tropical Gin", "Gin + Bebida", "Tequila", "Ballantine", "Jack Daniels",
-				"Jagger + Red Bull", "Jagger + Bebida", "Red Bull", "Agua 600cc");
+				"Cerveza", "Piscola Alto", "Piscola Mistral", "Tropical Gin", "Gin + Bebida", "Tequila", "Ballantine",
+				"Jack Daniels", "Jagger + Red Bull", "Jagger + Bebida", "Red Bull", "Agua 600cc");
 	}
 
 	@Test
@@ -41,15 +41,15 @@ class ProductControllerTests extends PostgresIntegrationTest {
 		var result = mvc.get().uri("/api/products").exchange();
 
 		assertThat(result).bodyJson().extractingPath("$[*].name").asArray()
-			.doesNotContain("Piscola Alto del Carmen", "Piscola Mistral");
+			.doesNotContain("Piscola");
 	}
 
 	@Test
 	void includesOnlyActiveVariantsInOrder() {
 		var result = mvc.get().uri("/api/products").exchange();
 
-		assertThat(result).bodyJson().extractingPath("$[6].name").isEqualTo("Jack Daniels");
-		assertThat(result).bodyJson().extractingPath("$[6].variants[*].name").asArray()
+		assertThat(result).bodyJson().extractingPath("$[7].name").isEqualTo("Jack Daniels");
+		assertThat(result).bodyJson().extractingPath("$[7].variants[*].name").asArray()
 			.containsExactly("Original", "Manzana");
 		assertThat(result).bodyJson().extractingPath("$[0].name").isEqualTo("Cerveza");
 		assertThat(result).bodyJson().extractingPath("$[0].variants[*].name").asArray()
@@ -71,10 +71,10 @@ class ProductControllerTests extends PostgresIntegrationTest {
 	void redBullHasNullPromo() {
 		var result = mvc.get().uri("/api/products").exchange();
 
-		assertThat(result).bodyJson().extractingPath("$[9].name").isEqualTo("Red Bull");
-		assertThat(result).bodyJson().extractingPath("$[9].unitPrice").isEqualTo(3500);
-		assertThat(result).bodyJson().extractingPath("$[9].promoQuantity").isNull();
-		assertThat(result).bodyJson().extractingPath("$[9].promoPrice").isNull();
+		assertThat(result).bodyJson().extractingPath("$[10].name").isEqualTo("Red Bull");
+		assertThat(result).bodyJson().extractingPath("$[10].unitPrice").isEqualTo(3500);
+		assertThat(result).bodyJson().extractingPath("$[10].promoQuantity").isNull();
+		assertThat(result).bodyJson().extractingPath("$[10].promoPrice").isNull();
 	}
 
 	@Test
@@ -84,7 +84,7 @@ class ProductControllerTests extends PostgresIntegrationTest {
 		var result = mvc.get().uri("/api/products").exchange();
 
 		assertThat(result).bodyJson().extractingPath("$[*].name").asArray()
-			.hasSize(11)
+			.hasSize(12)
 			.doesNotContain("Test Whiskey");
 	}
 

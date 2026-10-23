@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.tuple;
 import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -118,18 +120,18 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void mergesLinesWithTheSameVariant() {
 		openEvent();
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		var result = post("""
 				{"paymentMethod": "MERCADO_PAGO", "lines": [
 				  {"variantId": %d, "quantity": 1},
 				  {"variantId": %d, "quantity": 2}
-				]}""".formatted(piscola.getId(), piscola.getId()));
+				]}""".formatted(piscolaAlto.getId(), piscolaAlto.getId()));
 
 		assertThat(result).hasStatus(HttpStatus.CREATED);
 		assertThat(result).bodyJson().extractingPath("$.lines.length()").isEqualTo(1);
 		assertThat(result).bodyJson().extractingPath("$.lines[0].quantity").isEqualTo(3);
-		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(13000);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(12000);
 
 		entityManager.flush();
 		entityManager.clear();
@@ -138,13 +140,39 @@ class SaleControllerTests extends PostgresIntegrationTest {
 			.isEqualTo(3);
 	}
 
+	@ParameterizedTest
+	@CsvSource({
+		"Piscola Alto,    5000, 3, 12000",
+		"Piscola Mistral, 6000, 3, 14000",
+		"Tropical Gin,    8500, 2, 14000"
+	})
+	void appliesTheOfficialOctoberPromoAndKeepsItInTheLine(String productName, long unitPrice, int promoQuantity,
+			long promoPrice) {
+		openEvent();
+		ProductVariant single = variant(productName, "Única");
+
+		var result = post("""
+				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": %d}]}"""
+			.formatted(single.getId(), promoQuantity));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo((int) promoPrice);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo((int) promoPrice);
+
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(saleRepository.findAll().getFirst().getLines()).singleElement()
+			.extracting(SaleLine::getQuantity, SaleLine::getUnitPrice, SaleLine::getPromoQuantity, SaleLine::getPromoPrice)
+			.containsExactly(promoQuantity, unitPrice, promoQuantity, promoPrice);
+	}
+
 	@Test
 	void rejectsASaleWithoutAnOpenEvent() {
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		var result = post("""
 				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}"""
-			.formatted(piscola.getId()));
+			.formatted(piscolaAlto.getId()));
 
 		assertThat(result).hasStatus(HttpStatus.CONFLICT)
 			.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
@@ -179,13 +207,13 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void rejectsAVariantOfAnInactiveProduct() {
 		openEvent();
-		ProductVariant mistral = variant("Piscola Mistral", "Única");
+		ProductVariant piscola = variant("Piscola", "Única");
 
 		var result = post("""
-				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(mistral.getId()));
+				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(piscola.getId()));
 
 		assertBadRequest(result);
-		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("Piscola Mistral", "inactivo");
+		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("Piscola", "inactivo");
 	}
 
 	@Test
@@ -210,10 +238,10 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void rejectsZeroQuantity() {
 		openEvent();
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		var result = post("""
-				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 0}]}""".formatted(piscola.getId()));
+				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 0}]}""".formatted(piscolaAlto.getId()));
 
 		assertBadRequest(result);
 		assertThat(result).bodyJson().extractingPath("$.errors").asArray().singleElement().asString()
@@ -223,11 +251,11 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void rejectsNegativeQuantity() {
 		openEvent();
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		assertBadRequest(post("""
 				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": -1}]}"""
-			.formatted(piscola.getId())));
+			.formatted(piscolaAlto.getId())));
 	}
 
 	@Test
@@ -245,10 +273,10 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void rejectsMissingPaymentMethod() {
 		openEvent();
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		var result = post("""
-				{"lines": [{"variantId": %d, "quantity": 1}]}""".formatted(piscola.getId()));
+				{"lines": [{"variantId": %d, "quantity": 1}]}""".formatted(piscolaAlto.getId()));
 
 		assertBadRequest(result);
 		assertThat(result).bodyJson().extractingPath("$.errors").asArray().singleElement().asString()
@@ -258,11 +286,11 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void rejectsUnknownPaymentMethod() {
 		openEvent();
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		assertBadRequest(post("""
 				{"paymentMethod": "BITCOIN", "lines": [{"variantId": %d, "quantity": 1}]}"""
-			.formatted(piscola.getId())));
+			.formatted(piscolaAlto.getId())));
 	}
 
 	@Test
@@ -317,16 +345,16 @@ class SaleControllerTests extends PostgresIntegrationTest {
 	@Test
 	void theTipDoesNotChangeThePromoPrice() {
 		openEvent();
-		ProductVariant piscola = variant("Piscola", "Única");
+		ProductVariant piscolaAlto = variant("Piscola Alto", "Única");
 
 		var result = post("""
 				{"paymentMethod": "EFECTIVO", "tipAmount": 1000,
-				 "lines": [{"variantId": %d, "quantity": 3}]}""".formatted(piscola.getId()));
+				 "lines": [{"variantId": %d, "quantity": 3}]}""".formatted(piscolaAlto.getId()));
 
 		assertThat(result).hasStatus(HttpStatus.CREATED);
-		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(13000);
+		assertThat(result).bodyJson().extractingPath("$.subtotal").isEqualTo(12000);
 		assertThat(result).bodyJson().extractingPath("$.tipAmount").isEqualTo(1000);
-		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(14000);
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(13000);
 	}
 
 	@Test
