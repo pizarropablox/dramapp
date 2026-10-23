@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Service } from '@angular/core';
-import { map, Observable } from 'rxjs';
+import { catchError, from, map, Observable, switchMap, throwError } from 'rxjs';
+import { withJsonErrorBody } from '../shared/api-error';
+import { fileNameFromDisposition, XLSX_TYPE } from './event-export';
 import { EventSummaryResponse } from './summary';
 
 @Service()
@@ -18,6 +20,28 @@ export class SummaryService {
     return this.http
       .get<EventSummaryResponse>(`/api/events/${eventId}/summary`)
       .pipe(map(withRefundDefaults));
+  }
+
+  /**
+   * The event's .xlsx (admin only), named as the backend says. Through HttpClient, not a link: the session cookie
+   * and the 401 handling work as in any other call, also in the installed PWA.
+   */
+  exportEvent(eventId: number): Observable<File> {
+    return this.http
+      .get(`/api/events/${eventId}/export`, { observe: 'response', responseType: 'blob' })
+      .pipe(
+        map(
+          (response) =>
+            new File(
+              [response.body ?? new Blob()],
+              fileNameFromDisposition(response.headers.get('Content-Disposition')),
+              { type: XLSX_TYPE },
+            ),
+        ),
+        catchError((error: unknown) =>
+          from(withJsonErrorBody(error)).pipe(switchMap((parsed) => throwError(() => parsed))),
+        ),
+      );
   }
 }
 

@@ -65,12 +65,14 @@ class SecurityRulesTests extends PostgresIntegrationTest {
 
 				Arguments.of(POST, "/api/events", Access.ADMIN),
 				Arguments.of(POST, "/api/events/999999/close", Access.ADMIN),
+				Arguments.of(GET, "/api/events/999999/export", Access.ADMIN),
 				Arguments.of(POST, "/api/products", Access.ADMIN),
 				Arguments.of(GET, "/api/system/status", Access.ADMIN),
 				Arguments.of(GET, "/actuator/health", Access.ADMIN),
 
 				Arguments.of(GET, "/api/unknown", Access.NOBODY),
 				Arguments.of(POST, "/api/events/current", Access.NOBODY),
+				Arguments.of(POST, "/api/events/999999/export", Access.NOBODY),
 				Arguments.of(GET, "/", Access.NOBODY));
 	}
 

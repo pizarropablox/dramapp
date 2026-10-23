@@ -155,7 +155,7 @@ Hay dos usuarios fijos, compartidos por quienes cumplen ese rol:
 | Usuario | Puede |
 |---|---|
 | `barra` | vender, anular, ver últimas ventas y totales |
-| `admin` | todo lo de `barra`, más abrir y cerrar eventos, la carta y **Estado del sistema** |
+| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, la carta y **Estado del sistema** |
 
 Ninguna clave ni hash vive en el repositorio: solo en las variables de Render.
 
@@ -258,6 +258,24 @@ Invoke-RestMethod -Method Post -Uri "$api/events/$($event.id)/close" -Headers $a
 
 El token dura 24 horas; para no dejarlo en la sesión de PowerShell, cierra la terminal al terminar.
 
+### Exportar el evento a Excel (admin)
+
+En **Totales**, después de **Control**, `admin` tiene **Descargar Excel** (barra no lo ve y el backend le responde 403). Descarga el evento que muestra la pantalla: el abierto, con las cifras de ese momento, o el último cerrado. Al cierre: **Cerrar evento → Descargar Excel**.
+
+El archivo se llama `2026-10-31_DRAMA-Halloween.xlsx` (fecha primero, así la carpeta queda en orden) y trae cinco hojas. Los montos son números (se pueden sumar) y las horas son fecha y hora de Excel en hora de Chile.
+
+| Hoja | Qué tiene |
+|---|---|
+| **Resumen** | Las mismas cifras de Totales: por medio de pago, ventas, vendido, propina, **total con propina**, devuelto en efectivo y esperado; ventas anuladas; devoluciones activas y anuladas. |
+| **Para BARRA** | Una fila por producto en el orden de la sección 2 de la hoja BARRA de la planilla: Unidades a precio normal y Vasos en promo se pegan juntas en B:C. Lo vendido que no está en esas 14 filas (la «Piscola» de eventos viejos, productos nuevos) va al final. Debajo, separado, **Total (control)**: su ingreso es igual a «Vendido». |
+| **Ventas** | Una fila por venta, anuladas incluidas con su hora y motivo. |
+| **Devoluciones** | Una fila por devolución, anuladas incluidas (no suman). |
+| **Detalle** | Una fila por producto de cada venta, con variante, cantidad y precios (también las de ventas anuladas, con su estado). |
+
+En Para BARRA, cuando una promo mezcla variantes (1 Jack Original + 1 Jack Manzana), cada vaso cuenta como vaso en promo de su variante y la plata se reparte por vaso. Los vasos que quedan fuera de la promo son los últimos del carrito. La plata por producto es exacta; si no se divide justo entre variantes, el peso que sobra va a la primera en la carta.
+
+**En el teléfono:** en Android (Chrome) el archivo queda en Descargas. En iPhone el botón cambia a **Guardar Excel** y un segundo toque abre la hoja de compartir: «Guardar en Archivos», WhatsApp o Mail. Compartir necesita HTTPS, así que en la red local (http) el iPhone intenta una descarga normal.
+
 ### Límites del plan gratis
 
 - **Render (backend):** 512 MB de RAM y 0,1 CPU. La JVM va ajustada en el `Dockerfile` (heap al 60 %, SerialGC). Arranca en alrededor de un minuto, y Render puede reiniciarlo en cualquier momento. Con el ping de UptimeRobot queda despierto todo el mes (unas 744 de las 750 horas gratis del workspace), así que no cabe un segundo servicio gratis que esté siempre encendido.
@@ -266,7 +284,7 @@ El token dura 24 horas; para no dejarlo en la sesión de PowerShell, cierra la t
 
 ### Después de cada evento
 
-Sacar un **snapshot manual en Neon** (el plan gratis guarda solo 6 horas de historial y un snapshot).
+Descargar el **Excel del evento** desde Totales (respaldo fuera de la base) y sacar un **snapshot manual en Neon** (el plan gratis guarda solo 6 horas de historial y un snapshot).
 
 ### Probar la imagen en local
 

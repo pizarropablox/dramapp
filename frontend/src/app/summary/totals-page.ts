@@ -13,6 +13,7 @@ import { SINGLE_VARIANT_NAME } from '../sale/sale-format';
 import { errorMessage } from '../shared/api-error';
 import { ClpPipe } from '../shared/clp';
 import { formatTime } from '../shared/time';
+import { canShareFile, downloadFile } from './event-export';
 import { EventSummaryResponse, ProductUnits } from './summary';
 import { CloseEventDialog } from './close-event-dialog';
 import { OpenEventDialog } from './open-event-dialog';
@@ -36,7 +37,8 @@ function formatElapsed(ms: number): string {
 /**
  * Live totals of the open event (or of the last closed one). While the event is open it refreshes every
  * 10 seconds, one request at a time, and not while the page is hidden. A failed refresh keeps the last totals.
- * admin also opens the event here ("Abrir evento", on top) and closes it ("Cerrar evento", at the very end).
+ * admin also opens the event here ("Abrir evento", on top) and closes it ("Cerrar evento", at the very end), and
+ * downloads the event's Excel ("Descargar Excel", after the control block).
  */
 @Component({
   selector: 'app-totals-page',
@@ -68,6 +70,10 @@ export class TotalsPage {
   protected readonly closing = signal(false);
   protected readonly closeSubmitting = signal(false);
   protected readonly closeError = signal<string | null>(null);
+  protected readonly exporting = signal(false);
+  protected readonly exportError = signal<string | null>(null);
+  /** iPhone: the Excel is ready and waits for a second tap, as the share sheet needs a fresh one. */
+  protected readonly exportReady = signal<File | null>(null);
   private readonly lastUpdated = signal<number | null>(null);
   private readonly now = signal(Date.now());
 
@@ -82,6 +88,7 @@ export class TotalsPage {
       (this.noEvents() || (this.summary() !== null && !this.isOpen())),
   );
   protected readonly canClose = computed(() => this.auth.isAdmin() && this.isOpen());
+  protected readonly canExport = computed(() => this.auth.isAdmin() && this.summary() !== null);
   protected readonly elapsed = computed(() => {
     const lastUpdated = this.lastUpdated();
     return lastUpdated === null ? '' : formatElapsed(this.now() - lastUpdated);
@@ -134,6 +141,7 @@ export class TotalsPage {
         this.openSubmitting.set(false);
         this.opening.set(null);
         this.currentEvent.set(event);
+        this.exportReady.set(null);
         this.notice.set(`Evento "${event.name}" abierto. Ya se puede vender.`);
         this.loadLatest();
       },
@@ -176,6 +184,8 @@ export class TotalsPage {
         this.closeSubmitting.set(false);
         this.closing.set(false);
         this.currentEvent.set(null);
+        // An Excel prepared before closing lacks the last sales: the next one has the final totals.
+        this.exportReady.set(null);
         this.notice.set(
           `Evento cerrado a las ${formatTime(event.closedAt ?? new Date().toISOString())}. ` +
             'Estos son los totales finales.',
@@ -201,6 +211,54 @@ export class TotalsPage {
 
   protected cancelClose(): void {
     this.closing.set(false);
+  }
+
+  /**
+   * Downloads the Excel of the event on screen (open or just closed). Where the share sheet takes the file
+   * (iPhone), it waits for a second tap ("Guardar Excel"); elsewhere (Chrome for Android) it is saved right away.
+   */
+  protected startExport(): void {
+    const current = this.summary();
+    if (!current || this.exporting()) {
+      return;
+    }
+    this.exporting.set(true);
+    this.exportError.set(null);
+    this.exportReady.set(null);
+    this.summaryService.exportEvent(current.event.id).subscribe({
+      next: (file) => {
+        this.exporting.set(false);
+        if (canShareFile(this.document.defaultView?.navigator, file)) {
+          this.exportReady.set(file);
+        } else {
+          downloadFile(this.document, file);
+        }
+      },
+      error: (error: unknown) => {
+        this.exporting.set(false);
+        this.exportError.set(errorMessage(error));
+      },
+    });
+  }
+
+  /** iPhone: opens the share sheet ("Guardar en Archivos", WhatsApp, Mail). Cancelling keeps the file ready. */
+  protected async shareExport(): Promise<void> {
+    const file = this.exportReady();
+    const navigator = this.document.defaultView?.navigator;
+    if (!file || !navigator) {
+      return;
+    }
+    try {
+      await navigator.share({ files: [file], title: file.name });
+      this.exportReady.set(null);
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+      // The share sheet refused it: the plain download is the next best thing.
+      this.exportReady.set(null);
+      downloadFile(this.document, file);
+    }
   }
 
   protected refreshNow(): void {

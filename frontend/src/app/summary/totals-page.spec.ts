@@ -8,6 +8,7 @@ import { CurrentEventStore } from '../event/current-event-store';
 import { EventResponse } from '../event/event';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { CLOSE_ARMING_MS } from './close-event-dialog';
+import { XLSX_TYPE } from './event-export';
 import { EventSummaryResponse } from './summary';
 import { REFRESH_INTERVAL_MS, TotalsPage } from './totals-page';
 
@@ -791,6 +792,197 @@ describe('TotalsPage', () => {
           expect(dialogCloseButton().disabled).toBe(false);
           expect(text('.top .state')).toBe('Abierto');
         });
+      });
+    });
+  });
+
+  describe('Excel', () => {
+    const FILE_NAME = '2026-10-31_DRAMA-Octubre.xlsx';
+    const DISPOSITION = `attachment; filename="${FILE_NAME}"; filename*=UTF-8''${FILE_NAME}`;
+    let clicked: HTMLAnchorElement[];
+
+    function signIn(role: Session['role']): void {
+      TestBed.inject(AuthStore).signedIn({
+        username: role.toLowerCase(),
+        role,
+        expiresAt: '2026-11-02T03:00:00Z',
+      });
+    }
+
+    function exportButton(): HTMLButtonElement | null {
+      return root().querySelector('button.export-button');
+    }
+
+    function startExport(): ReturnType<HttpTestingController['expectOne']> {
+      exportButton()!.click();
+      TestBed.tick();
+      return httpTesting.expectOne('/api/events/7/export');
+    }
+
+    function flushFile(request: ReturnType<HttpTestingController['expectOne']>): void {
+      request.flush(new Blob(['xlsx'], { type: XLSX_TYPE }), {
+        headers: { 'Content-Disposition': DISPOSITION },
+      });
+      TestBed.tick();
+    }
+
+    beforeEach(() => {
+      clicked = [];
+      URL.createObjectURL = vi.fn(() => 'blob:excel');
+      URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        clicked.push(this);
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      delete (navigator as Partial<Navigator>).canShare;
+      delete (navigator as Partial<Navigator>).share;
+    });
+
+    it('is not offered to barra', () => {
+      signIn('BARRA');
+      setup();
+
+      expect(exportButton()).toBeNull();
+      expect(text('.export')).toBe('');
+    });
+
+    it('is offered to admin after the control block and before "Cerrar evento"', () => {
+      signIn('ADMIN');
+      setup();
+
+      expect(text('.export h2')).toBe('Excel');
+      expect(exportButton()!.textContent?.trim()).toBe('Descargar Excel');
+      expect(text('.export .hint')).toContain('son las cifras de este momento');
+      const exportSection = root().querySelector('.export')!;
+      expect(
+        root().querySelector('.control')!.compareDocumentPosition(exportSection) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        exportSection.compareDocumentPosition(root().querySelector('.close-zone')!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('is offered for the last closed event too', () => {
+      signIn('ADMIN');
+      setup(CLOSED_SUMMARY);
+
+      expect(exportButton()).not.toBeNull();
+      expect(text('.export .hint')).not.toContain('cifras de este momento');
+    });
+
+    it('says it is preparing the file and cannot be tapped twice', () => {
+      signIn('ADMIN');
+      setup();
+
+      const request = startExport();
+
+      expect(exportButton()!.textContent?.trim()).toBe('Preparando Excel…');
+      expect(exportButton()!.disabled).toBe(true);
+      expect(exportButton()!.getAttribute('aria-busy')).toBe('true');
+      exportButton()!.click();
+      httpTesting.expectNone('/api/events/7/export');
+      flushFile(request);
+      expect(exportButton()!.disabled).toBe(false);
+    });
+
+    it('downloads the file with the name the backend gives where it cannot be shared (Android)', () => {
+      signIn('ADMIN');
+      setup();
+
+      flushFile(startExport());
+
+      expect(clicked).toHaveLength(1);
+      expect(clicked[0].download).toBe(FILE_NAME);
+      expect(clicked[0].href).toBe('blob:excel');
+      expect(URL.createObjectURL).toHaveBeenCalledWith(
+        expect.objectContaining({ name: FILE_NAME }),
+      );
+      expect(exportButton()!.textContent?.trim()).toBe('Descargar Excel');
+      expect(root().querySelector('.export-error')).toBeNull();
+    });
+
+    it('waits for a second tap to open the share sheet where it can be shared (iPhone)', async () => {
+      const share = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { canShare: () => true, share });
+      signIn('ADMIN');
+      setup();
+
+      flushFile(startExport());
+
+      expect(clicked).toHaveLength(0);
+      const ready = root().querySelector<HTMLButtonElement>('button.export-button.ready')!;
+      expect(ready.textContent?.trim()).toBe('Guardar Excel');
+      expect(text('.export .hint')).toContain(`${FILE_NAME} está listo`);
+
+      ready.click();
+      await vi.waitFor(() => expect(share).toHaveBeenCalled());
+      const shared = share.mock.calls[0][0] as ShareData;
+      expect(shared.files?.[0].name).toBe(FILE_NAME);
+      expect(shared.files?.[0].type).toBe(XLSX_TYPE);
+      await vi.waitFor(() => {
+        TestBed.tick();
+        expect(exportButton()!.textContent?.trim()).toBe('Descargar Excel');
+      });
+    });
+
+    it('keeps the file ready when the share sheet is cancelled', async () => {
+      const share = vi.fn().mockRejectedValue(new DOMException('Cancelado', 'AbortError'));
+      Object.assign(navigator, { canShare: () => true, share });
+      signIn('ADMIN');
+      setup();
+      flushFile(startExport());
+
+      root().querySelector<HTMLButtonElement>('button.export-button.ready')!.click();
+      await vi.waitFor(() => expect(share).toHaveBeenCalled());
+      TestBed.tick();
+
+      expect(root().querySelector('button.export-button.ready')).not.toBeNull();
+      expect(clicked).toHaveLength(0);
+    });
+
+    it("shows the backend's message when the file cannot be made, to try again", async () => {
+      signIn('ADMIN');
+      setup();
+
+      startExport().flush(
+        new Blob(
+          [
+            JSON.stringify({
+              title: 'Evento no encontrado',
+              status: 404,
+              detail: 'El evento 7 no existe.',
+            }),
+          ],
+          { type: 'application/problem+json' },
+        ),
+        { status: 404, statusText: 'Not Found' },
+      );
+
+      await vi.waitFor(() => {
+        TestBed.tick();
+        expect(text('.export-error')).toBe('El evento 7 no existe.');
+      });
+      expect(root().querySelector('.export-error')!.getAttribute('role')).toBe('alert');
+      expect(exportButton()!.disabled).toBe(false);
+      expect(clicked).toHaveLength(0);
+    });
+
+    it('says when there is no connection', async () => {
+      signIn('ADMIN');
+      setup();
+
+      startExport().error(new ProgressEvent('error'));
+
+      await vi.waitFor(() => {
+        TestBed.tick();
+        expect(text('.export-error')).toBe(NO_CONNECTION_MESSAGE);
       });
     });
   });
