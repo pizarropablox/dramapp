@@ -1,20 +1,26 @@
 import { calculateTotals, PricedLine, ProductPrice, productSubtotal } from './pricing';
 
 const CERVEZA: ProductPrice = { productId: 1, unitPrice: 3000, promoQuantity: 2, promoPrice: 5000 };
-const PISCOLA: ProductPrice = {
-  productId: 2,
-  unitPrice: 5500,
+const PISCOLA_MISTRAL: ProductPrice = {
+  productId: 4,
+  unitPrice: 6000,
   promoQuantity: 3,
-  promoPrice: 13000,
+  promoPrice: 14000,
 };
 const TROPICAL_GIN: ProductPrice = {
   productId: 5,
   unitPrice: 8500,
   promoQuantity: 2,
-  promoPrice: 15000,
+  promoPrice: 14000,
 };
 const JACK_DANIELS: ProductPrice = {
   productId: 9,
+  unitPrice: 8500,
+  promoQuantity: 2,
+  promoPrice: 15000,
+};
+const JAGGER_RED_BULL: ProductPrice = {
+  productId: 10,
   unitPrice: 8500,
   promoQuantity: 2,
   promoPrice: 15000,
@@ -32,16 +38,16 @@ function line(price: ProductPrice, quantity: number): PricedLine {
 
 describe('pricing', () => {
   it.each([
-    [3, 13000],
-    [4, 18500],
-    [6, 26000],
-    [2, 11000],
-  ])('%i Piscola cost %i', (units, expected) => {
-    expect(calculateTotals([line(PISCOLA, units)]).subtotal).toBe(expected);
+    [3, 14000],
+    [4, 20000],
+    [6, 28000],
+    [2, 12000],
+  ])('%i Piscola Mistral cost %i', (units, expected) => {
+    expect(calculateTotals([line(PISCOLA_MISTRAL, units)]).subtotal).toBe(expected);
   });
 
-  it('3 Tropical Gin cost 23500 (one promo plus one single)', () => {
-    expect(calculateTotals([line(TROPICAL_GIN, 3)]).subtotal).toBe(23500);
+  it('3 Tropical Gin cost 22500 (one promo plus one single)', () => {
+    expect(calculateTotals([line(TROPICAL_GIN, 3)]).subtotal).toBe(22500);
   });
 
   it('mixes variants of the same product into one promo', () => {
@@ -58,24 +64,26 @@ describe('pricing', () => {
   it('never mixes different products into a promo', () => {
     const cervezaNormal = line(CERVEZA, 1);
     const cervezaSinAlcohol = line(CERVEZA, 1);
-    const piscola = line(PISCOLA, 1);
+    const piscolaMistral = line(PISCOLA_MISTRAL, 1);
 
-    expect(calculateTotals([cervezaNormal, cervezaSinAlcohol, piscola]).subtotal).toBe(10500);
+    expect(calculateTotals([cervezaNormal, cervezaSinAlcohol, piscolaMistral]).subtotal).toBe(
+      11000,
+    );
   });
 
   it('does not apply a promo across two products with the same promo', () => {
-    // Tropical Gin and Jack Daniels both have "2 x 15000", but one of each is not a promo.
-    expect(calculateTotals([line(TROPICAL_GIN, 1), line(JACK_DANIELS, 1)]).subtotal).toBe(17000);
+    // Jack Daniels and Jagger + Red Bull both have "2 x 15000", but one of each is not a promo.
+    expect(calculateTotals([line(JACK_DANIELS, 1), line(JAGGER_RED_BULL, 1)]).subtotal).toBe(17000);
   });
 
   it('reports the regular total and the savings from promos', () => {
-    const totals = calculateTotals([line(PISCOLA, 4), line(RED_BULL, 1)]);
+    const totals = calculateTotals([line(PISCOLA_MISTRAL, 4), line(RED_BULL, 1)]);
 
-    expect(totals).toEqual({ subtotal: 22000, regularTotal: 25500, savings: 3500 });
+    expect(totals).toEqual({ subtotal: 23500, regularTotal: 27500, savings: 4000 });
   });
 
   it('has no savings without promos', () => {
-    expect(calculateTotals([line(PISCOLA, 1)]).savings).toBe(0);
+    expect(calculateTotals([line(PISCOLA_MISTRAL, 1)]).savings).toBe(0);
   });
 
   it('is zero for an empty cart', () => {
@@ -83,6 +91,6 @@ describe('pricing', () => {
   });
 
   it('computes a single product subtotal', () => {
-    expect(productSubtotal(PISCOLA, 7)).toBe(2 * 13000 + 5500);
+    expect(productSubtotal(PISCOLA_MISTRAL, 7)).toBe(2 * 14000 + 6000);
   });
 });
