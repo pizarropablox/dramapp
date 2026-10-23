@@ -44,6 +44,10 @@ class SecurityConfig {
 			// Render's health check and UptimeRobot.
 			.requestMatchers(GET, "/actuator/health/liveness").permitAll()
 
+			// The event's .xlsx (DRAMA-42): admin only. First among the /api/events rules, so no broader barra rule
+			// added later can let barra read it.
+			.requestMatchers(GET, "/api/events/*/export").hasRole(Role.ADMIN.name())
+
 			.requestMatchers(GET, "/api/auth/me").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/products", "/api/products/**").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/events/current", "/api/events/*/summary").hasRole(Role.BARRA.name())
