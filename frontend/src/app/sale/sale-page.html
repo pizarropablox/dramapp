@@ -6,16 +6,13 @@
       @if (currentEvent.loading()) {
         <p class="event" role="status"><span class="event-name">Cargando evento…</span></p>
       } @else if (currentEvent.error()) {
-        <div class="banner danger" role="alert">
-          <p [title]="eventErrorMessage()">
-            No se pudo cargar el evento.<span class="visually-hidden">
-              {{ eventErrorMessage() }}</span
-            >
-          </p>
+        <!-- Short here; the full message and "Reintentar" get their own row under the header. -->
+        <div class="banner danger">
+          <p>Sin conexión</p>
           <button
             type="button"
             class="retry"
-            aria-label="Reintentar"
+            aria-label="Reintentar cargar el evento"
             (click)="currentEvent.refresh()"
           >
             ↻
@@ -59,6 +56,12 @@
       Ventas
     </button>
   </header>
+  @if (currentEvent.error()) {
+    <div class="banner danger event-error" role="alert">
+      <p>No se pudo cargar el evento. {{ eventErrorMessage() }}</p>
+      <button type="button" (click)="currentEvent.refresh()">Reintentar</button>
+    </div>
+  }
   <app-session-expiry-notice />
 
   <main class="menu" aria-label="Carta">
@@ -86,9 +89,11 @@
       [itemCount]="cart.itemCount()"
       [lastAdded]="cart.lastAdded()"
       [(expanded)]="cartExpanded"
+      [undoable]="!!emptiedLines()"
       (incremented)="cart.increment($event)"
       (decremented)="cart.decrement($event)"
-      (cleared)="cart.clear()"
+      (cleared)="emptyCart()"
+      (undone)="undoEmpty()"
     />
     @if (saleError(); as message) {
       <div class="banner danger" role="alert">
@@ -96,15 +101,25 @@
         <button type="button" aria-label="Cerrar aviso" (click)="saleError.set(null)">✕</button>
       </div>
     }
-    <app-tip-selector [(tip)]="tip" [disabled]="submitting()" />
+    @if (unconfirmedSale(); as pending) {
+      <app-pending-sale-notice
+        [pending]="pending"
+        (review)="openRecent()"
+        (registered)="pendingRegistered()"
+        (notRegistered)="pendingNotRegistered()"
+      />
+    } @else {
+      <app-tip-selector [tip]="cart.tip()" (tipChange)="setTip($event)" [disabled]="submitting()" />
+    }
     <app-checkout-bar
       [subtotal]="cart.totals().subtotal"
       [tipAmount]="tipAmount()"
       [savings]="cart.totals().savings"
+      [methodsHidden]="!!unconfirmedSale()"
       [(paymentMethod)]="paymentMethod"
       [canConfirm]="canConfirm()"
       [submitting]="submitting()"
-      [hint]="blockReason()"
+      [hint]="unconfirmedSale() ? null : blockReason()"
       (confirmed)="confirm()"
     />
   </section>
@@ -174,6 +189,6 @@
 @if (notice(); as message) {
   <div class="toast" role="status">
     <p>{{ message }}</p>
-    <button type="button" aria-label="Cerrar aviso" (click)="notice.set(null)">✕</button>
+    <button type="button" aria-label="Cerrar aviso" (click)="showNotice(null)">✕</button>
   </div>
 }

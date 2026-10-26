@@ -31,6 +31,8 @@ export class CurrentEventStore {
   /** The open event, or null (none, or not known yet). */
   readonly event = computed(() => this.state() ?? null);
   readonly loading = computed(() => this.state() === undefined && this.errorState() === null);
+  /** The backend already answered once: event() is the truth, not "not known yet". */
+  readonly answered = computed(() => this.state() !== undefined);
   readonly error = this.errorState.asReadonly();
   /** Stopped asking after STOP_WITHOUT_EVENT_MS without an open event. */
   readonly paused = this.pausedState.asReadonly();

@@ -19,7 +19,8 @@ export const UPDATE_BAR_HEIGHT_VAR = '--update-bar-height';
 
 /**
  * "Hay una versión nueva · Actualizar", pinned on top and pushing the page down, never over the sale
- * buttons at the bottom. With products in the cart it asks first: reloading empties the cart.
+ * buttons at the bottom. With products in the cart it asks first: the saved cart comes back after the
+ * reload (see cart-storage.ts), but updating in the middle of a sale is still better avoided.
  */
 @Component({
   selector: 'app-update-banner',
@@ -28,8 +29,8 @@ export const UPDATE_BAR_HEIGHT_VAR = '--update-bar-height';
       <div #bar class="update-bar" role="status">
         @if (confirming()) {
           <p>
-            Se perderá el carrito ({{ itemCount() }}
-            {{ itemCount() === 1 ? 'producto' : 'productos' }}). Termina la venta primero, o:
+            Hay un pedido en curso ({{ itemCount() }}
+            {{ itemCount() === 1 ? 'producto' : 'productos' }}). Mejor termina la venta primero, o:
           </p>
           <div class="actions">
             <button type="button" (click)="confirming.set(false)">Volver</button>

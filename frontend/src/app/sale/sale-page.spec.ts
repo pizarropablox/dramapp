@@ -1,8 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+  TestRequest,
+} from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { Mock } from 'vitest';
+import { AuthStore } from '../auth/auth-store';
 import {
   POLL_WITH_EVENT_MS,
   POLL_WITHOUT_EVENT_MS,
@@ -12,8 +17,11 @@ import { EventResponse } from '../event/event';
 import { RefundResponse } from '../refund/refund';
 import { ProductResponse } from '../product/product';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
+import { MemoryStorage } from '../../testing/memory-storage';
+import { CART_STORAGE, CART_STORAGE_KEY } from './cart-storage';
 import { SaleResponse } from './sale';
-import { EVENT_CLOSED_MESSAGE, SalePage } from './sale-page';
+import { SALE_REQUEST_TIMEOUT_MS } from './sale.service';
+import { EVENT_CLOSED_MESSAGE, RESTORED_NOTICE_MS, SalePage, UNDO_EMPTY_MS } from './sale-page';
 
 const OPEN_EVENT: EventResponse = {
   id: 7,
@@ -70,15 +78,27 @@ describe('SalePage', () => {
   let fixture: ComponentFixture<SalePage>;
   // jsdom does not implement scrollIntoView.
   let scrollIntoView: Mock<(options?: boolean | ScrollIntoViewOptions) => void>;
+  /** The phone's localStorage: survives reload() below. */
+  let storage: MemoryStorage;
+
+  async function configure(): Promise<void> {
+    await TestBed.configureTestingModule({
+      imports: [SalePage],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: CART_STORAGE, useValue: storage },
+      ],
+    }).compileComponents();
+    httpTesting = TestBed.inject(HttpTestingController);
+  }
 
   beforeEach(async () => {
     scrollIntoView = vi.fn<(options?: boolean | ScrollIntoViewOptions) => void>();
     Element.prototype.scrollIntoView = scrollIntoView;
-    await TestBed.configureTestingModule({
-      imports: [SalePage],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
-    }).compileComponents();
-    httpTesting = TestBed.inject(HttpTestingController);
+    storage = new MemoryStorage();
+    await configure();
   });
 
   afterEach(() => {
@@ -86,7 +106,10 @@ describe('SalePage', () => {
     delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
-  async function setup(event: EventResponse | null = OPEN_EVENT): Promise<void> {
+  async function setup(
+    event: EventResponse | null = OPEN_EVENT,
+    menu: ProductResponse[] = MENU,
+  ): Promise<void> {
     fixture = TestBed.createComponent(SalePage);
     TestBed.tick();
     const eventRequest = httpTesting.expectOne('/api/events/current');
@@ -98,8 +121,41 @@ describe('SalePage', () => {
         { status: 404, statusText: 'Not Found' },
       );
     }
-    httpTesting.expectOne('/api/products').flush(MENU);
+    httpTesting.expectOne('/api/products').flush(menu);
     await fixture.whenStable();
+  }
+
+  function signIn(username = 'barra'): void {
+    TestBed.inject(AuthStore).signedIn({
+      username,
+      role: 'BARRA',
+      expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000).toISOString(),
+    });
+  }
+
+  /**
+   * Reloads the page: a new app (empty CartStore) with the same localStorage, signed in again.
+   * A sale still being sent is cut off, as the browser does.
+   */
+  async function reload(
+    event: EventResponse | null = OPEN_EVENT,
+    menu: ProductResponse[] = MENU,
+  ): Promise<void> {
+    fixture.destroy();
+    httpTesting.match(() => true);
+    httpTesting.verify();
+    TestBed.resetTestingModule();
+    await configure();
+    signIn();
+    await setup(event, menu);
+  }
+
+  function saved(): Record<string, unknown> | null {
+    return storage.json(CART_STORAGE_KEY) as Record<string, unknown> | null;
+  }
+
+  function toast(): HTMLElement | null {
+    return root().querySelector('.toast');
   }
 
   function root(): HTMLElement {
@@ -418,7 +474,8 @@ describe('SalePage', () => {
 
       await tap(button('Vaciar'));
 
-      expect(text()).toContain('Carrito (0)');
+      expect(text()).toMatch(/Carrito vaciado\s*·\s*Deshacer/);
+      expect(cartLabels()).toEqual([]);
       expect(confirmButton().closest('app-checkout-bar')?.textContent).toContain('$0');
     });
 
@@ -526,7 +583,7 @@ describe('SalePage', () => {
       expect(text()).toContain('Sin evento abierto: no se puede vender.');
     });
 
-    it('shows a generic message without connection and keeps the cart', async () => {
+    it('without an answer, keeps the cart and asks to check whether it was registered', async () => {
       await setup();
       await tap(productButton('Red Bull'));
       await tap(button('Efectivo'));
@@ -536,9 +593,11 @@ describe('SalePage', () => {
       httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
       await fixture.whenStable();
 
-      expect(text()).toContain(NO_CONNECTION_MESSAGE);
+      expect(root().querySelector('app-pending-sale-notice')?.textContent).toContain(
+        'Esta venta pudo haberse registrado',
+      );
       expect(cartLabels()).toEqual(['Red Bull']);
-      expect(confirmButton().disabled).toBe(false);
+      expect(confirmButton().disabled).toBe(true);
     });
   });
 
@@ -693,9 +752,15 @@ describe('SalePage', () => {
       await tap(button('Efectivo'));
 
       await tap(confirmButton());
-      httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+      httpTesting
+        .expectOne('/api/sales')
+        .flush(
+          { status: 400, detail: 'Venta inválida.' },
+          { status: 400, statusText: 'Bad Request' },
+        );
       await fixture.whenStable();
 
+      expect(text()).toContain('Venta inválida.');
       expect(button('$500').getAttribute('aria-pressed')).toBe('true');
     });
   });
@@ -1383,6 +1448,333 @@ describe('SalePage', () => {
         );
         await tap(button('Volver'));
         expect(refundRows()[0].classList).toContain('voided');
+      });
+    });
+  });
+  describe('event load error', () => {
+    it('says "Sin conexión ↻" in the header and the full message in its own row', async () => {
+      fixture = TestBed.createComponent(SalePage);
+      TestBed.tick();
+      httpTesting.expectOne('/api/events/current').error(new ProgressEvent('error'));
+      httpTesting.expectOne('/api/products').flush(MENU);
+      await fixture.whenStable();
+
+      expect(root().querySelector('.status')?.textContent).toContain('Sin conexión');
+      expect(root().querySelector('.status')?.textContent).not.toContain('No se pudo');
+      const row = root().querySelector('.event-error')!;
+      expect(row.closest('header')).toBeNull();
+      expect(row.textContent).toContain(`No se pudo cargar el evento. ${NO_CONNECTION_MESSAGE}`);
+
+      await tap(button('Reintentar'));
+      httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+      await fixture.whenStable();
+
+      expect(root().querySelector('.event-error')).toBeNull();
+      expect(root().querySelector('.event-name')?.textContent).toBe('DRAMA Octubre');
+    });
+  });
+
+  describe('keeping the cart across reloads', () => {
+    beforeEach(() => signIn());
+
+    afterEach(() => vi.useRealTimers());
+
+    /** Red Bull + 2 Jack Daniels Original, $1.000 tip, Efectivo: $19.500. */
+    async function buildOrder(): Promise<void> {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(productButton('Jack Daniels'));
+      await tap(button('Original'));
+      await tap(
+        root().querySelector<HTMLButtonElement>(
+          '[aria-label="Agregar uno de Jack Daniels Original"]',
+        )!,
+      );
+      await tap(button('$1.000'));
+      await tap(button('Efectivo'));
+    }
+
+    function pendingNotice(): HTMLElement | null {
+      return root().querySelector('app-pending-sale-notice');
+    }
+
+    it('brings back the lines and the tip, priced with the current menu, but not the payment method', async () => {
+      await buildOrder();
+      const repriced = MENU.map((product) =>
+        product.id === 9 ? { ...product, promoPrice: 16000 } : product,
+      );
+
+      await reload(OPEN_EVENT, repriced);
+
+      expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+      expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+      expect(root().querySelector('app-checkout-bar .amount')?.textContent).toContain('$20.500');
+      expect(button('Efectivo').getAttribute('aria-pressed')).toBe('false');
+      expect(text()).toContain('Elige el medio de pago.');
+      expect(toast()?.textContent).toContain('Pedido recuperado · 3 productos');
+    });
+
+    it('closes "Pedido recuperado" on its own after 4 s', async () => {
+      await buildOrder();
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      await reload();
+      expect(toast()).not.toBeNull();
+      vi.advanceTimersByTime(RESTORED_NOTICE_MS);
+      TestBed.tick();
+
+      expect(toast()).toBeNull();
+    });
+
+    it('names the products no longer on the menu, until the notice is closed', async () => {
+      await buildOrder();
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      await reload(
+        OPEN_EVENT,
+        MENU.filter((product) => product.id !== 12),
+      );
+      vi.advanceTimersByTime(RESTORED_NOTICE_MS);
+      TestBed.tick();
+
+      expect(cartLabels()).toEqual(['Jack Daniels · Original']);
+      expect(toast()?.textContent).toContain(
+        'Pedido recuperado. Se quitó Red Bull (ya no está en la carta)',
+      );
+      toast()!.querySelector('button')!.click();
+      TestBed.tick();
+      expect(toast()).toBeNull();
+    });
+
+    it.each([
+      ['another event', { ...OPEN_EVENT, id: 8 }],
+      ['no open event', null],
+    ])('discards the cart of %s', async (_, event) => {
+      await buildOrder();
+
+      await reload(event);
+
+      expect(cartLabels()).toEqual([]);
+      expect(toast()).toBeNull();
+      expect(saved()).toBeNull();
+    });
+
+    it('waits, neither restoring nor discarding, while the event cannot be loaded', async () => {
+      await buildOrder();
+      const before = storage.getItem(CART_STORAGE_KEY);
+      fixture.destroy();
+      httpTesting.verify();
+      TestBed.resetTestingModule();
+      await configure();
+      signIn();
+      fixture = TestBed.createComponent(SalePage);
+      TestBed.tick();
+      httpTesting.expectOne('/api/events/current').error(new ProgressEvent('error'));
+      httpTesting.expectOne('/api/products').flush(MENU);
+      await fixture.whenStable();
+
+      expect(cartLabels()).toEqual([]);
+      expect(storage.getItem(CART_STORAGE_KEY)).toBe(before);
+
+      await tap(button('Reintentar'));
+      httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+      await fixture.whenStable();
+
+      expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+    });
+
+    it('forgets the saved cart once the sale is registered', async () => {
+      await buildOrder();
+
+      confirmButton().click();
+      TestBed.tick();
+      expect(saved()).toMatchObject({
+        status: 'sending',
+        sending: { paymentMethod: 'EFECTIVO', amountToCharge: 19500 },
+      });
+      httpTesting
+        .expectOne('/api/sales')
+        .flush(saleResponse({ subtotal: 18500, tipAmount: 1000, amountToCharge: 19500 }));
+      await fixture.whenStable();
+
+      expect(saved()).toBeNull();
+      await reload();
+      expect(cartLabels()).toEqual([]);
+    });
+
+    describe('a sale sent without an answer', () => {
+      async function reloadDuringTheSale(): Promise<void> {
+        await buildOrder();
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales');
+        await reload();
+      }
+
+      it('after a reload, blocks confirming and shows what was sent, keeping cart and confirm in view', async () => {
+        await reloadDuringTheSale();
+
+        const notice = pendingNotice()!;
+        expect(notice.textContent).toContain('Esta venta pudo haberse registrado');
+        expect(notice.textContent).toMatch(/\d\d:\d\d · Efectivo · \$19\.500/);
+        expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+        expect(confirmButton().disabled).toBe(true);
+        // The notice already says why: no repeated hint, the space is needed at 375px.
+        expect(root().querySelector('app-checkout-bar .hint')).toBeNull();
+        // It takes the place of the tip and payment buttons, not of the cart or the confirm button.
+        expect(root().querySelector('app-tip-selector')).toBeNull();
+        expect(root().querySelector('app-checkout-bar .methods')).toBeNull();
+        expect(toast()).toBeNull();
+      });
+
+      it('"Ver ventas" opens the latest sales', async () => {
+        await reloadDuringTheSale();
+
+        button('Ver ventas').click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush([]);
+        httpTesting.expectOne('/api/refunds').flush([]);
+        await fixture.whenStable();
+
+        expect(root().querySelector('app-recent-sales-sheet')).not.toBeNull();
+      });
+
+      it('"Ya está: vaciar" starts a new sale', async () => {
+        await reloadDuringTheSale();
+
+        await tap(button('Ya está: vaciar'));
+
+        expect(pendingNotice()).toBeNull();
+        expect(cartLabels()).toEqual([]);
+        expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+        expect(saved()).toBeNull();
+      });
+
+      it('"No está: seguir" lets it be confirmed again', async () => {
+        await reloadDuringTheSale();
+
+        await tap(button('No está: seguir'));
+
+        expect(pendingNotice()).toBeNull();
+        expect(saved()).toMatchObject({ status: 'editing', sending: null });
+        await tap(button('Mercado Pago'));
+        expect(confirmButton().disabled).toBe(false);
+      });
+
+      it('gives up after 15 s without an answer: asks to check, and ignores a late answer', async () => {
+        await buildOrder();
+        vi.useFakeTimers();
+
+        confirmButton().click();
+        TestBed.tick();
+        const request = httpTesting.expectOne('/api/sales');
+
+        vi.advanceTimersByTime(SALE_REQUEST_TIMEOUT_MS - 100);
+        TestBed.tick();
+        expect(pendingNotice()).toBeNull();
+        expect(confirmButton().textContent).toContain('Registrando');
+
+        vi.advanceTimersByTime(100);
+        TestBed.tick();
+        expect(pendingNotice()?.textContent).toContain('Esta venta pudo haberse registrado');
+        expect(confirmButton().disabled).toBe(true);
+        expect(confirmButton().textContent).toContain('Confirmar venta');
+        expect(saved()).toMatchObject({ status: 'sending' });
+        // Cancelled: whatever the backend answers later never reaches the page.
+        expect(request.cancelled).toBe(true);
+      });
+
+      it.each([
+        ['no connection', (request: TestRequest) => request.error(new ProgressEvent('error'))],
+        [
+          'a 502 from the proxy',
+          (request: TestRequest) =>
+            request.flush('<html>Bad Gateway</html>', { status: 502, statusText: 'Bad Gateway' }),
+        ],
+        [
+          'a 500',
+          (request: TestRequest) =>
+            request.flush({ status: 500 }, { status: 500, statusText: 'Server Error' }),
+        ],
+      ])('asks the same without reloading after %s', async (_, answer) => {
+        await buildOrder();
+
+        confirmButton().click();
+        TestBed.tick();
+        answer(httpTesting.expectOne('/api/sales'));
+        await fixture.whenStable();
+
+        expect(pendingNotice()).not.toBeNull();
+        expect(confirmButton().disabled).toBe(true);
+        expect(saved()).toMatchObject({ status: 'sending' });
+      });
+
+      it.each([
+        [400, 'Venta inválida.'],
+        [409, EVENT_CLOSED_MESSAGE],
+      ])('a %i proves it was not registered: back to editing', async (status, message) => {
+        await buildOrder();
+
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting
+          .expectOne('/api/sales')
+          .flush({ status, detail: 'Venta inválida.' }, { status, statusText: 'Error' });
+        await fixture.whenStable();
+        if (status === 409) {
+          httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+          await fixture.whenStable();
+        }
+
+        expect(pendingNotice()).toBeNull();
+        expect(text()).toContain(message);
+        expect(saved()).toMatchObject({ status: 'editing', sending: null });
+        expect(confirmButton().disabled).toBe(false);
+      });
+    });
+
+    describe('"Vaciar"', () => {
+      async function emptyWithUndo(): Promise<void> {
+        await buildOrder();
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        button('Vaciar').click();
+        TestBed.tick();
+      }
+
+      it('"Deshacer" within 5 s brings the lines back and saves them again', async () => {
+        await emptyWithUndo();
+        expect(saved()).toBeNull();
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+
+        vi.advanceTimersByTime(UNDO_EMPTY_MS - 1);
+        button('Deshacer').click();
+        TestBed.tick();
+
+        expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+        expect(saved()?.['lines']).toHaveLength(2);
+      });
+
+      it('stops offering "Deshacer" after 5 s', async () => {
+        await emptyWithUndo();
+
+        vi.advanceTimersByTime(UNDO_EMPTY_MS);
+        TestBed.tick();
+
+        expect(text()).toContain('Carrito (0)');
+        expect(buttons().some((candidate) => candidate.textContent?.trim() === 'Deshacer')).toBe(
+          false,
+        );
+      });
+
+      it('a reload right after it comes back empty, without "Deshacer"', async () => {
+        await emptyWithUndo();
+        vi.useRealTimers();
+
+        await reload();
+
+        expect(cartLabels()).toEqual([]);
+        expect(text()).toContain('Carrito (0)');
+        expect(toast()).toBeNull();
       });
     });
   });
