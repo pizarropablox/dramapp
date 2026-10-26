@@ -90,7 +90,7 @@ describe('UpdateBanner', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it('warns that the cart will be lost, and can go back', async () => {
+  it('warns that there is an order in progress, and can go back', async () => {
     addToCart(3);
     swUpdate.versionReady();
     const root = await render();
@@ -98,7 +98,9 @@ describe('UpdateBanner', () => {
     button(root, 'Actualizar').click();
     await fixture.whenStable();
 
-    expect(root.textContent).toContain('Se perderá el carrito (3 productos)');
+    expect(root.textContent).toContain(
+      'Hay un pedido en curso (3 productos). Mejor termina la venta primero, o:',
+    );
     expect(reload).not.toHaveBeenCalled();
 
     button(root, 'Volver').click();
@@ -115,7 +117,7 @@ describe('UpdateBanner', () => {
 
     button(root, 'Actualizar').click();
     await fixture.whenStable();
-    expect(root.textContent).toContain('Se perderá el carrito (1 producto)');
+    expect(root.textContent).toContain('Hay un pedido en curso (1 producto).');
 
     button(root, 'Actualizar igual').click();
     await fixture.whenStable();

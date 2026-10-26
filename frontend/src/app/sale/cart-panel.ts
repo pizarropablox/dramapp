@@ -7,27 +7,40 @@ import {
   output,
   viewChild,
 } from '@angular/core';
+import { lineLabel } from './cart-storage';
 import { AddedLine, CartLine } from './cart-store';
 
 @Component({
   selector: 'app-cart-panel',
   template: `
-    <div class="header">
-      <button
-        type="button"
-        class="toggle"
-        [attr.aria-expanded]="expanded()"
-        aria-controls="cart-lines"
-        [disabled]="lines().length === 0"
-        (click)="expanded.set(!expanded())"
-      >
-        <span aria-hidden="true">{{ expanded() ? '▾' : '▸' }}</span>
-        Carrito ({{ itemCount() }})
-      </button>
-      @if (lines().length > 0) {
-        <button type="button" class="clear" (click)="cleared.emit()">Vaciar</button>
-      }
-    </div>
+    @if (undoable() && lines().length === 0) {
+      <div class="header undo" role="status">
+        <span>Carrito vaciado</span>
+        <span aria-hidden="true">·</span>
+        <button type="button" class="undo-button" (click)="undone.emit()">Deshacer</button>
+      </div>
+    } @else {
+      <!-- "Vaciar" right after the count, far from the − / + column on the right. -->
+      <div class="header">
+        <button
+          type="button"
+          class="toggle"
+          [attr.aria-expanded]="expanded()"
+          aria-controls="cart-lines"
+          [disabled]="lines().length === 0"
+          (click)="toggle()"
+        >
+          <span aria-hidden="true">{{ expanded() ? '▾' : '▸' }}</span>
+          Carrito ({{ itemCount() }})
+        </button>
+        @if (lines().length > 0) {
+          <span class="separator" aria-hidden="true">·</span>
+          <button type="button" class="clear" (click)="cleared.emit()">Vaciar</button>
+        }
+        <!-- The rest of the row also toggles; the button above is the accessible control. -->
+        <span class="toggle-zone" aria-hidden="true" (click)="toggle()"></span>
+      </div>
+    }
     @if (expanded() && lines().length > 0) {
       <ul #list id="cart-lines" class="lines">
         @for (line of lines(); track line.variant.id) {
@@ -71,8 +84,8 @@ import { AddedLine, CartLine } from './cart-store';
     .header {
       display: flex;
       flex: none;
-      justify-content: space-between;
-      gap: 0.5rem;
+      align-items: center;
+      height: 2rem;
     }
 
     .header button {
@@ -83,15 +96,34 @@ import { AddedLine, CartLine } from './cart-store';
     }
 
     .toggle {
-      flex: 1;
+      flex: none;
       padding: 0 0.25rem;
       text-align: left;
       font-weight: 600;
     }
 
-    .clear {
+    .separator {
+      color: var(--muted);
+    }
+
+    .clear,
+    .undo-button {
       padding: 0 0.5rem;
       color: var(--accent);
+      font-weight: 600;
+    }
+
+    .toggle-zone {
+      flex: 1;
+      align-self: stretch;
+      cursor: pointer;
+    }
+
+    .undo {
+      gap: 0.25rem;
+      padding-left: 0.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
     }
 
     // Visible rows depend on the height: 2 (< 720px), 3 (720-879px), 4 (>= 880px).
@@ -184,6 +216,9 @@ export class CartPanel {
   readonly incremented = output<number>();
   readonly decremented = output<number>();
   readonly cleared = output<void>();
+  /** Just emptied: "Carrito vaciado · Deshacer" replaces the header while the cart stays empty. */
+  readonly undoable = input(false);
+  readonly undone = output<void>();
   /** Scrolled into view whenever it changes, so the cashier always sees the latest add. */
   readonly lastAdded = input<AddedLine | null>(null);
 
@@ -202,9 +237,13 @@ export class CartPanel {
     });
   }
 
+  protected toggle(): void {
+    if (this.lines().length > 0) {
+      this.expanded.set(!this.expanded());
+    }
+  }
+
   protected lineName(line: CartLine): string {
-    return line.product.variants.length > 1
-      ? `${line.product.name} ${line.variant.name}`
-      : line.product.name;
+    return lineLabel(line);
   }
 }

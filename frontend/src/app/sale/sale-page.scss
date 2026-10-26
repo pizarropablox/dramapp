@@ -205,3 +205,9 @@
     color: inherit;
   }
 }
+
+// "No se pudo cargar el evento. {detalle} [Reintentar]": its own full-width row under the header, so the
+// detail is readable (the header only has room for "Sin conexión ↻").
+.event-error {
+  margin: 0 0.75rem 0.375rem;
+}

@@ -18,8 +18,8 @@ export const RELOAD_PAGE = new InjectionToken<() => void>('RELOAD_PAGE', {
 });
 
 /**
- * Tells when a deploy is ready, and applies it only when the user taps "Actualizar": the cart lives in
- * memory, so reloading on its own could lose a sale in progress. Does nothing without a service worker
+ * Tells when a deploy is ready, and applies it only when the user taps "Actualizar": reloading on its own
+ * could interrupt a sale in progress (the cart comes back, but a sale being sent would need checking). Does nothing without a service worker
  * (ng serve, tests, plain http on the LAN).
  */
 @Service()

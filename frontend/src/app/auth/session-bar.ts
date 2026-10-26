@@ -9,7 +9,8 @@ import { formatExpiry } from './session-format';
 
 /**
  * Who is logged in and until when, the admin-only link to /estado, and "Cerrar sesión".
- * Logging out on purpose empties the cart (someone else may use the phone next); a 401 does not.
+ * Logging out on purpose empties the cart, the saved one too (someone else may use the phone next);
+ * a 401 does not.
  */
 @Component({
   selector: 'app-session-bar',

@@ -74,6 +74,18 @@ describe('CurrentEventStore', () => {
     expect(store.event()).toEqual(OPEN_EVENT);
   });
 
+  it('tells "no open event" apart from "not known yet" (a failed first load)', () => {
+    stop = store.watch();
+    fail();
+    expect(store.answered()).toBe(false);
+    expect(store.event()).toBeNull();
+
+    vi.advanceTimersByTime(POLL_WITHOUT_EVENT_MS);
+    answer(null);
+    expect(store.answered()).toBe(true);
+    expect(store.event()).toBeNull();
+  });
+
   it('asks every 15 s while there is no open event, and notices when it opens', () => {
     stop = store.watch();
     answer(null);

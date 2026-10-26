@@ -4,7 +4,9 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { ProductResponse } from '../product/product';
+import { CART_STORAGE, CART_STORAGE_KEY } from '../sale/cart-storage';
 import { CartStore } from '../sale/cart-store';
+import { MemoryStorage } from '../../testing/memory-storage';
 import { Session } from './auth';
 import { AuthStore } from './auth-store';
 import { SessionBar } from './session-bar';
@@ -29,11 +31,14 @@ function session(role: Session['role']): Session {
 describe('SessionBar', () => {
   let fixture: ComponentFixture<SessionBar>;
   let httpTesting: HttpTestingController;
+  let storage: MemoryStorage;
 
   beforeEach(() => {
+    storage = new MemoryStorage();
     TestBed.configureTestingModule({
       imports: [SessionBar],
       providers: [
+        { provide: CART_STORAGE, useValue: storage },
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([
@@ -100,7 +105,9 @@ describe('SessionBar', () => {
 
   it('logs out: forgets the session, empties the cart and opens the login', async () => {
     const cart = TestBed.inject(CartStore);
+    cart.attach({ eventId: 7, username: 'barra' }, [RED_BULL]);
     cart.add(RED_BULL, RED_BULL.variants[0]);
+    expect(storage.getItem(CART_STORAGE_KEY)).not.toBeNull();
     const element = render('BARRA');
 
     button(element, 'Cerrar sesión').click();
@@ -113,6 +120,8 @@ describe('SessionBar', () => {
 
     expect(TestBed.inject(AuthStore).session()).toBeNull();
     expect(cart.isEmpty()).toBe(true);
+    // The saved cart too: someone else may use the phone next.
+    expect(storage.getItem(CART_STORAGE_KEY)).toBeNull();
     expect(TestBed.inject(Router).url).toBe('/login');
   });
 

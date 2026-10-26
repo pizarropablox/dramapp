@@ -27,20 +27,22 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
         }
       </div>
     </div>
-    <div class="methods" role="group" aria-label="Medio de pago">
-      @for (method of methods; track method) {
-        <button
-          type="button"
-          class="method"
-          [class.selected]="paymentMethod() === method"
-          [attr.aria-pressed]="paymentMethod() === method"
-          [disabled]="submitting()"
-          (click)="paymentMethod.set(method)"
-        >
-          {{ labels[method] }}
-        </button>
-      }
-    </div>
+    @if (!methodsHidden()) {
+      <div class="methods" role="group" aria-label="Medio de pago">
+        @for (method of methods; track method) {
+          <button
+            type="button"
+            class="method"
+            [class.selected]="paymentMethod() === method"
+            [attr.aria-pressed]="paymentMethod() === method"
+            [disabled]="submitting()"
+            (click)="paymentMethod.set(method)"
+          >
+            {{ labels[method] }}
+          </button>
+        }
+      </div>
+    }
     <button
       type="button"
       class="confirm"
@@ -156,6 +158,8 @@ export class CheckoutBar {
   readonly paymentMethod = model<PaymentMethod | null>(null);
   readonly canConfirm = input.required<boolean>();
   readonly submitting = input(false);
+  /** While a sale may have been registered, its notice takes this row's place (see PendingSaleNotice). */
+  readonly methodsHidden = input(false);
   /** Why the sale cannot be confirmed yet, if anything. */
   readonly hint = input<string | null>(null);
   readonly confirmed = output<void>();

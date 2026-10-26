@@ -1,6 +1,16 @@
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
-import { Component, computed, DestroyRef, inject, linkedSignal, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  linkedSignal,
+  signal,
+  untracked,
+} from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
@@ -12,21 +22,44 @@ import { VoidRefundDialog } from '../refund/void-refund-dialog';
 import { errorMessage } from '../shared/api-error';
 import { formatClp } from '../shared/clp';
 import { CartPanel } from './cart-panel';
-import { CartStore } from './cart-store';
+import { CartLine, CartStore } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
+import { PendingSaleNotice } from './pending-sale-notice';
 import { ProductGrid } from './product-grid';
 import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
-import { REFUND_VOIDED_NOTICE, refundNotice, SALE_VOIDED_NOTICE } from './sale-format';
-import { NO_TIP, TipChoice, TipSelector } from './tip-selector';
+import {
+  REFUND_VOIDED_NOTICE,
+  refundNotice,
+  restoredNotice,
+  SALE_VOIDED_NOTICE,
+} from './sale-format';
+import { TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
 import { VoidSaleDialog } from './void-sale-dialog';
 
 /** POST /api/sales only answers 409 when there is no open event: admin closed it from another phone. */
 export const EVENT_CLOSED_MESSAGE =
   'El evento está cerrado: esta venta no se registró. El carrito sigue aquí.';
+
+/** "Carrito vaciado · Deshacer" stays this long. */
+export const UNDO_EMPTY_MS = 5_000;
+/** "Pedido recuperado · 3 productos" closes on its own after this; one naming dropped products stays. */
+export const RESTORED_NOTICE_MS = 4_000;
+
+/**
+ * Answers to POST /api/sales that prove the sale was not registered: invalid, no session, not allowed,
+ * no open event. Any other failure (no answer, timeout, 5xx such as a proxy's 502 after the commit)
+ * leaves it possibly registered.
+ */
+const NOT_REGISTERED_STATUSES: readonly number[] = [
+  HttpStatusCode.BadRequest,
+  HttpStatusCode.Unauthorized,
+  HttpStatusCode.Forbidden,
+  HttpStatusCode.Conflict,
+];
 
 function normalize(text: string): string {
   return text
@@ -41,6 +74,7 @@ function normalize(text: string): string {
   imports: [
     CartPanel,
     CheckoutBar,
+    PendingSaleNotice,
     ProductGrid,
     RecentSalesSheet,
     RefundDialog,
@@ -60,6 +94,7 @@ export class SalePage {
   private readonly saleService = inject(SaleService);
   private readonly refundService = inject(RefundService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly auth = inject(AuthStore);
   protected readonly cart = inject(CartStore);
 
   protected readonly menu = rxResource({ stream: () => this.productService.getMenu() });
@@ -80,10 +115,19 @@ export class SalePage {
   protected readonly cartExpanded = linkedSignal(() => !this.cart.isEmpty());
 
   protected readonly pickingProduct = signal<ProductResponse | null>(null);
+  /** Not saved with the cart: after a reload it is chosen again, never preselected. */
   protected readonly paymentMethod = signal<PaymentMethod | null>(null);
-  protected readonly tip = signal<TipChoice>(NO_TIP);
-  protected readonly tipAmount = computed(() => this.tip().amount);
+  protected readonly tipAmount = computed(() => this.cart.tip().amount);
   protected readonly submitting = signal(false);
+  /** A sale sent without an answer (or before a reload) may have been registered: ask before selling. */
+  protected readonly unconfirmedSale = computed(() =>
+    this.submitting() ? null : this.cart.pending(),
+  );
+
+  /** The lines removed by "Vaciar", while "Deshacer" is offered. */
+  protected readonly emptiedLines = signal<readonly CartLine[] | null>(null);
+  private undoTimer?: ReturnType<typeof setTimeout>;
+  private noticeTimer?: ReturnType<typeof setTimeout>;
   protected readonly saleError = signal<string | null>(null);
   protected readonly lastSale = signal<SaleResponse | null>(null);
 
@@ -123,6 +167,9 @@ export class SalePage {
     if (!this.openEvent()) {
       return 'Sin evento abierto: no se puede vender.';
     }
+    if (this.unconfirmedSale()) {
+      return 'Revisa si la venta ya se registró.';
+    }
     if (this.cart.isEmpty()) {
       return 'Agrega productos para vender.';
     }
@@ -139,7 +186,74 @@ export class SalePage {
 
   constructor() {
     const stopWatching = this.currentEvent.watch();
-    this.destroyRef.onDestroy(stopWatching);
+    this.destroyRef.onDestroy(() => {
+      stopWatching();
+      clearTimeout(this.undoTimer);
+      clearTimeout(this.noticeTimer);
+    });
+
+    // Once the open event (or its absence), the user and the menu are known, the saved cart comes back
+    // (once per page load). If the event could not be loaded, it waits: neither restored nor discarded.
+    effect(() => {
+      const username = this.auth.session()?.username;
+      if (!username || !this.currentEvent.answered()) {
+        return;
+      }
+      const eventId = this.openEvent()?.id ?? null;
+      const menu = this.menu.hasValue() ? this.menu.value() : null;
+      untracked(() => {
+        const restored = this.cart.attach({ eventId, username }, menu);
+        if (restored && !restored.pending) {
+          const message = restoredNotice(this.cart.itemCount(), restored.removed);
+          this.showNotice(message, restored.removed.length === 0 ? RESTORED_NOTICE_MS : null);
+        }
+      });
+    });
+  }
+
+  /** autoCloseMs null: until closed or the next action. */
+  protected showNotice(message: string | null, autoCloseMs: number | null = null): void {
+    clearTimeout(this.noticeTimer);
+    this.notice.set(message);
+    if (message !== null && autoCloseMs !== null) {
+      this.noticeTimer = setTimeout(() => this.notice.set(null), autoCloseMs);
+    }
+  }
+
+  protected setTip(tip: TipChoice): void {
+    this.cart.setTip(tip);
+  }
+
+  protected emptyCart(): void {
+    this.emptiedLines.set(this.cart.empty());
+    clearTimeout(this.undoTimer);
+    this.undoTimer = setTimeout(() => this.emptiedLines.set(null), UNDO_EMPTY_MS);
+  }
+
+  protected undoEmpty(): void {
+    const lines = this.emptiedLines();
+    if (lines) {
+      this.cart.putBack(lines);
+    }
+    this.forgetEmptied();
+  }
+
+  private forgetEmptied(): void {
+    clearTimeout(this.undoTimer);
+    this.emptiedLines.set(null);
+  }
+
+  /** "Ya está: vaciar": the sale was registered after all. */
+  protected pendingRegistered(): void {
+    this.cart.clear();
+    this.paymentMethod.set(null);
+    this.saleError.set(null);
+  }
+
+  /** "No está: seguir": it can be confirmed again. */
+  protected pendingNotRegistered(): void {
+    this.cart.markNotSent();
+    this.saleError.set(null);
   }
 
   protected onSearch(event: Event): void {
@@ -148,6 +262,7 @@ export class SalePage {
 
   protected selectProduct(product: ProductResponse): void {
     if (product.variants.length === 1) {
+      this.forgetEmptied();
       this.cart.add(product, product.variants[0]);
     } else {
       this.pickingProduct.set(product);
@@ -155,6 +270,7 @@ export class SalePage {
   }
 
   protected pickVariant(product: ProductResponse, variant: ProductVariantResponse): void {
+    this.forgetEmptied();
     this.cart.add(product, variant);
     this.pickingProduct.set(null);
   }
@@ -164,23 +280,43 @@ export class SalePage {
     if (!this.canConfirm() || !paymentMethod) {
       return;
     }
+    const request = {
+      paymentMethod,
+      lines: this.cart.toRequestLines(),
+      tipAmount: this.tipAmount(),
+    };
     this.submitting.set(true);
     this.saleError.set(null);
+    // Saved before sending: if the page reloads or the answer never comes, it may have been registered.
+    this.cart.markSending({
+      paymentMethod,
+      amountToCharge: this.cart.totals().subtotal + request.tipAmount,
+      startedAt: Date.now(),
+    });
+    // If this page is left before the answer, the request is cancelled but the cart stays "sending".
     this.saleService
-      .register({ paymentMethod, lines: this.cart.toRequestLines(), tipAmount: this.tipAmount() })
+      .register(request)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (sale) => {
           this.lastSale.set(sale);
-          this.notice.set(null);
+          this.showNotice(null);
           this.cart.clear();
           this.paymentMethod.set(null);
-          this.tip.set(NO_TIP);
           this.submitting.set(false);
         },
         error: (error: unknown) => {
           this.submitting.set(false);
-          if (error instanceof HttpErrorResponse && error.status === HttpStatusCode.Conflict) {
+          if (
+            !(error instanceof HttpErrorResponse) ||
+            !NOT_REGISTERED_STATUSES.includes(error.status)
+          ) {
+            // No answer, a 5xx or the 15 s timeout: it may have been registered.
+            // PendingSaleNotice asks to check before confirming again.
+            return;
+          }
+          this.cart.markNotSent();
+          if (error.status === HttpStatusCode.Conflict) {
             this.saleError.set(EVENT_CLOSED_MESSAGE);
             this.currentEvent.refresh();
           } else {
@@ -191,7 +327,7 @@ export class SalePage {
   }
 
   protected openRecent(): void {
-    this.notice.set(null);
+    this.showNotice(null);
     this.recentOpen.set(true);
   }
 
@@ -240,7 +376,7 @@ export class SalePage {
               sales?.map((candidate) => (candidate.id === voided.id ? voided : candidate)),
             );
           }
-          this.notice.set(SALE_VOIDED_NOTICE);
+          this.showNotice(SALE_VOIDED_NOTICE);
         },
         error: (error: unknown) => {
           this.voidSubmitting.set(false);
@@ -262,7 +398,7 @@ export class SalePage {
   }
 
   protected startRefund(): void {
-    this.notice.set(null);
+    this.showNotice(null);
     this.refundError.set(null);
     this.refunding.set(true);
   }
@@ -291,7 +427,7 @@ export class SalePage {
           } else {
             this.recentRefunds.reload();
           }
-          this.notice.set(refundNotice(refund.amount));
+          this.showNotice(refundNotice(refund.amount));
         },
         error: (error: unknown) => {
           this.refundSubmitting.set(false);
@@ -305,7 +441,7 @@ export class SalePage {
   }
 
   protected startVoidRefund(refund: RefundResponse): void {
-    this.notice.set(null);
+    this.showNotice(null);
     this.voidRefundError.set(null);
     this.voidingRefund.set(refund);
   }
@@ -335,7 +471,7 @@ export class SalePage {
               refunds?.map((candidate) => (candidate.id === voided.id ? voided : candidate)),
             );
           }
-          this.notice.set(REFUND_VOIDED_NOTICE);
+          this.showNotice(REFUND_VOIDED_NOTICE);
         },
         error: (error: unknown) => {
           this.voidRefundSubmitting.set(false);
