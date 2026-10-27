@@ -89,7 +89,7 @@
       [itemCount]="cart.itemCount()"
       [lastAdded]="cart.lastAdded()"
       [(expanded)]="cartExpanded"
-      [undoable]="!!emptiedLines()"
+      [undoable]="!!emptied()"
       (incremented)="cart.increment($event)"
       (decremented)="cart.decrement($event)"
       (cleared)="emptyCart()"

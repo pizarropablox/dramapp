@@ -228,19 +228,35 @@ describe('CartStore', () => {
       expect(saved()).toMatchObject({ status: 'editing', sending: null });
     });
 
-    it('"Vaciar" forgets the saved cart but keeps the tip, and "Deshacer" saves it again', () => {
+    it.each([
+      ['a quick tip', { amount: 500, custom: false }],
+      ['a custom tip', { amount: 3500, custom: true }],
+    ])('"Vaciar" removes the lines and %s, and "Deshacer" saves both again', (_, tip) => {
       cart.attach(OWNER, [RED_BULL]);
       cart.add(RED_BULL, RED_BULL_SINGLE);
-      cart.setTip({ amount: 500, custom: false });
+      cart.setTip(tip);
 
       const removed = cart.empty();
       expect(cart.isEmpty()).toBe(true);
-      expect(cart.tip().amount).toBe(500);
+      expect(cart.tip()).toEqual({ amount: 0, custom: false });
       expect(saved()).toBeNull();
 
       cart.putBack(removed);
       expect(cart.itemCount()).toBe(1);
+      expect(cart.tip()).toEqual(tip);
       expect(saved()?.['lines']).toHaveLength(1);
+      expect(saved()?.['tip']).toEqual(tip);
+    });
+
+    it('after "Vaciar", the next order is saved without the tip', () => {
+      cart.attach(OWNER, [RED_BULL]);
+      cart.add(RED_BULL, RED_BULL_SINGLE);
+      cart.setTip({ amount: 500, custom: false });
+      cart.empty();
+
+      cart.add(RED_BULL, RED_BULL_SINGLE);
+
+      expect(saved()?.['tip']).toEqual({ amount: 0, custom: false });
     });
 
     it('clear() empties lines, tip and pending sale, and forgets the saved cart', () => {
