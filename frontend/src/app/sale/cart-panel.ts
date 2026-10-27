@@ -132,15 +132,21 @@ import { AddedLine, CartLine } from './cart-store';
     // 880 keeps 393x852 phones (iPhone 16) at 3 rows.
     // The dvh cap drops rows when they would leave the product grid under 3 full rows
     // (554px = header 48 + 3 grid rows 248 + rest of the checkout 258, with tip breakdown)
-    // or push the checkout over its 55dvh cap (258px of it is not cart lines).
-    // Never under 2 rows; more lines scroll, snapping to whole rows so none is cut in half.
+    // or push the checkout over its cap (258px of it is not cart lines). In rem (34.625rem, 16.125rem)
+    // so they grow with the text size; the cap is 55dvh, up to 75dvh with larger text (styles.scss).
+    // Never under 2 rows (1 with "Muy grande"); more lines scroll, snapping to whole rows so none is cut
+    // in half.
     .lines {
       --rows: 2;
+      --min-rows: 2;
       flex: none;
-      max-height: 5.5rem; // fallback where round() is unsupported
+      max-height: calc(var(--min-rows) * 2.75rem); // fallback where round() is unsupported
       max-height: min(
         calc(var(--rows) * 2.75rem),
-        max(5.5rem, round(down, min(100dvh - 554px, 55dvh - 258px), 2.75rem))
+        max(
+          calc(var(--min-rows) * 2.75rem),
+          round(down, min(100dvh - 34.625rem, var(--checkout-cap) - 16.125rem), 2.75rem)
+        )
       );
       overflow-y: auto;
       overscroll-behavior: contain;
@@ -162,6 +168,11 @@ import { AddedLine, CartLine } from './cart-store';
       }
     }
 
+    // "Muy grande": one line is enough to see what was added; the products above need the room.
+    :host-context([data-font-size='xlarge']) .lines {
+      --min-rows: 1;
+    }
+
     .line {
       scroll-snap-align: start;
       display: flex;
@@ -179,6 +190,16 @@ import { AddedLine, CartLine } from './cart-store';
       font-weight: 600;
       white-space: nowrap;
       text-overflow: ellipsis;
+    }
+
+    // Larger text: "Jack Daniels · Manzana" wraps to 2 lines (the row is tall enough) instead of "…".
+    :host-context([data-font-size]) .label {
+      display: -webkit-box;
+      line-height: 1.2;
+      white-space: normal;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
     }
 
     .variant {

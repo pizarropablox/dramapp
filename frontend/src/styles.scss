@@ -22,6 +22,8 @@
   // Notch / status bar, which the installed app draws under (black-translucent). While the update bar
   // shows, the bar already covers it.
   --safe-area-top: env(safe-area-inset-top);
+  // Sale checkout height cap (raised for larger text, below).
+  --checkout-cap: 55dvh;
 
   font-family:
     system-ui,
@@ -41,6 +43,28 @@ html,
 body {
   margin: 0;
   height: 100%;
+}
+
+// Text size chosen on this phone (display/font-size-store.ts). Every size in the app is in rem, so the
+// whole app scales from here; Normal has no attribute and keeps the browser default.
+// Components adjust the larger sizes with :host-context([data-font-size]) (any size but Normal).
+:root[data-font-size='large'] {
+  font-size: 112.5%;
+}
+
+:root[data-font-size='xlarge'] {
+  font-size: 125%;
+}
+
+// Larger text makes the sale checkout taller: it may take more of the screen so "Confirmar venta" never
+// ends up under its inner scroll; the menu above scrolls instead. Read by sale-page.scss and cart-panel.ts.
+:root[data-font-size] {
+  --checkout-cap: 70dvh;
+}
+
+// "Muy grande" at 375x660 needs ~73dvh (two tip rows, the total and its notes stacked).
+:root[data-font-size='xlarge'] {
+  --checkout-cap: 75dvh;
 }
 
 :root.update-bar-visible {

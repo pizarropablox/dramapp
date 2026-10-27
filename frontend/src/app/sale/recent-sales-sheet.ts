@@ -195,6 +195,12 @@ function createdAt(entry: Entry): number {
       white-space: nowrap;
     }
 
+    // Larger text: the title wraps to 2 lines ("Últimas / ventas") instead of running under "Devolución".
+    :host-context([data-font-size]) h2 {
+      line-height: 1.15;
+      white-space: normal;
+    }
+
     .start-refund {
       flex: none;
       min-height: 2.75rem;
