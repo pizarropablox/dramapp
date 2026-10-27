@@ -35,7 +35,9 @@ import { AddedLine, CartLine } from './cart-store';
         </button>
         @if (lines().length > 0) {
           <span class="separator" aria-hidden="true">·</span>
-          <button type="button" class="clear" (click)="cleared.emit()">Vaciar</button>
+          <button type="button" class="clear" [disabled]="clearDisabled()" (click)="cleared.emit()">
+            Vaciar
+          </button>
         }
         <!-- The rest of the row also toggles; the button above is the accessible control. -->
         <span class="toggle-zone" aria-hidden="true" (click)="toggle()"></span>
@@ -216,6 +218,8 @@ export class CartPanel {
   readonly incremented = output<number>();
   readonly decremented = output<number>();
   readonly cleared = output<void>();
+  /** A sale being sent or possibly registered: only its notice can empty the cart. */
+  readonly clearDisabled = input(false);
   /** Just emptied: "Carrito vaciado · Deshacer" replaces the header while the cart stays empty. */
   readonly undoable = input(false);
   readonly undone = output<void>();

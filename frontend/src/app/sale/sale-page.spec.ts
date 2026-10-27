@@ -1661,6 +1661,51 @@ describe('SalePage', () => {
         expect(confirmButton().disabled).toBe(false);
       });
 
+      it('"Vaciar" is disabled while the sale is being sent', async () => {
+        await buildOrder();
+
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales');
+        await fixture.whenStable();
+
+        expect(button('Vaciar').disabled).toBe(true);
+      });
+
+      it('"Vaciar" is disabled while it may have been registered, and the notice survives a reload', async () => {
+        await reloadDuringTheSale();
+
+        expect(button('Vaciar').disabled).toBe(true);
+        await tap(button('Vaciar'));
+        expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+        expect(saved()).toMatchObject({ status: 'sending' });
+
+        await reload();
+
+        expect(pendingNotice()?.textContent).toContain('Esta venta pudo haberse registrado');
+        expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+      });
+
+      it('"Vaciar" works again once the notice is answered', async () => {
+        await reloadDuringTheSale();
+
+        await tap(button('No está: seguir'));
+        expect(button('Vaciar').disabled).toBe(false);
+        await tap(button('Vaciar'));
+
+        expect(cartLabels()).toEqual([]);
+        expect(saved()).toBeNull();
+      });
+
+      it('"Vaciar" works again for the next order after "Ya está: vaciar"', async () => {
+        await reloadDuringTheSale();
+
+        await tap(button('Ya está: vaciar'));
+        await tap(productButton('Red Bull'));
+
+        expect(button('Vaciar').disabled).toBe(false);
+      });
+
       it('gives up after 15 s without an answer: asks to check, and ignores a late answer', async () => {
         await buildOrder();
         vi.useFakeTimers();
@@ -1741,29 +1786,74 @@ describe('SalePage', () => {
         TestBed.tick();
       }
 
-      it('"Deshacer" within 5 s brings the lines back and saves them again', async () => {
+      function customTip(): HTMLInputElement {
+        return root().querySelector<HTMLInputElement>('app-tip-selector input')!;
+      }
+
+      function hasUndo(): boolean {
+        return buttons().some((candidate) => candidate.textContent?.trim() === 'Deshacer');
+      }
+
+      it('also removes the tip, so it does not reach the next customer', async () => {
+        await emptyWithUndo();
+
+        expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('false');
+        expect(root().querySelector('app-checkout-bar .amount')?.textContent).toContain('$0');
+        expect(saved()).toBeNull();
+      });
+
+      it('"Deshacer" within 5 s brings the lines and the tip back and saves them again', async () => {
         await emptyWithUndo();
         expect(saved()).toBeNull();
-        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
 
         vi.advanceTimersByTime(UNDO_EMPTY_MS - 1);
         button('Deshacer').click();
         TestBed.tick();
 
         expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
         expect(saved()?.['lines']).toHaveLength(2);
+        expect(saved()?.['tip']).toEqual({ amount: 1000, custom: false });
       });
 
-      it('stops offering "Deshacer" after 5 s', async () => {
+      it('"Deshacer" brings back a custom tip', async () => {
+        await buildOrder();
+        const input = customTip();
+        input.dispatchEvent(new Event('focus'));
+        input.value = '3500';
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new Event('blur'));
+        await fixture.whenStable();
+
+        await tap(button('Vaciar'));
+        expect(customTip().value).toBe('');
+        await tap(button('Deshacer'));
+
+        expect(customTip().value).toBe('3500');
+        expect(customTip().classList).toContain('selected');
+        expect(saved()?.['tip']).toEqual({ amount: 3500, custom: true });
+      });
+
+      it('choosing a tip stops offering "Deshacer", which would overwrite it', async () => {
+        await emptyWithUndo();
+
+        button('$500').click();
+        TestBed.tick();
+
+        expect(hasUndo()).toBe(false);
+        expect(button('$500').getAttribute('aria-pressed')).toBe('true');
+      });
+
+      it('stops offering "Deshacer" after 5 s, still without the tip', async () => {
         await emptyWithUndo();
 
         vi.advanceTimersByTime(UNDO_EMPTY_MS);
         TestBed.tick();
 
         expect(text()).toContain('Carrito (0)');
-        expect(buttons().some((candidate) => candidate.textContent?.trim() === 'Deshacer')).toBe(
-          false,
-        );
+        expect(hasUndo()).toBe(false);
+        expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
       });
 
       it('a reload right after it comes back empty, without "Deshacer"', async () => {
@@ -1775,6 +1865,18 @@ describe('SalePage', () => {
         expect(cartLabels()).toEqual([]);
         expect(text()).toContain('Carrito (0)');
         expect(toast()).toBeNull();
+      });
+
+      it('the next order is saved and restored without the emptied tip', async () => {
+        await emptyWithUndo();
+        vi.useRealTimers();
+
+        await tap(productButton('Red Bull'));
+        expect(saved()?.['tip']).toEqual({ amount: 0, custom: false });
+        await reload();
+
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(button('Sin propina').getAttribute('aria-pressed')).toBe('true');
       });
     });
   });

@@ -63,6 +63,13 @@ describe('CartPanel', () => {
     expect(cleared).toHaveBeenCalledOnce();
   });
 
+  it('disables "Vaciar" when told to', async () => {
+    fixture.componentRef.setInput('clearDisabled', true);
+    const root = await render(LINES);
+
+    expect(button(root, 'Vaciar')?.disabled).toBe(true);
+  });
+
   it('collapses and expands from the rest of the row too', async () => {
     const root = await render(LINES);
 

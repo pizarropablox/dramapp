@@ -22,7 +22,7 @@ import { VoidRefundDialog } from '../refund/void-refund-dialog';
 import { errorMessage } from '../shared/api-error';
 import { formatClp } from '../shared/clp';
 import { CartPanel } from './cart-panel';
-import { CartLine, CartStore } from './cart-store';
+import { CartStore, EmptiedCart } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
 import { PendingSaleNotice } from './pending-sale-notice';
 import { ProductGrid } from './product-grid';
@@ -124,8 +124,8 @@ export class SalePage {
     this.submitting() ? null : this.cart.pending(),
   );
 
-  /** The lines removed by "Vaciar", while "Deshacer" is offered. */
-  protected readonly emptiedLines = signal<readonly CartLine[] | null>(null);
+  /** The lines and tip removed by "Vaciar", while "Deshacer" is offered. */
+  protected readonly emptied = signal<EmptiedCart | null>(null);
   private undoTimer?: ReturnType<typeof setTimeout>;
   private noticeTimer?: ReturnType<typeof setTimeout>;
   protected readonly saleError = signal<string | null>(null);
@@ -220,27 +220,33 @@ export class SalePage {
     }
   }
 
+  /** A tip chosen after "Vaciar" is for the next customer: "Deshacer" would overwrite it. */
   protected setTip(tip: TipChoice): void {
+    this.forgetEmptied();
     this.cart.setTip(tip);
   }
 
   protected emptyCart(): void {
-    this.emptiedLines.set(this.cart.empty());
+    // Emptying would forget the saved "sending" cart: only "Ya está: vaciar" / "No está: seguir" can.
+    if (this.cart.pending()) {
+      return;
+    }
+    this.emptied.set(this.cart.empty());
     clearTimeout(this.undoTimer);
-    this.undoTimer = setTimeout(() => this.emptiedLines.set(null), UNDO_EMPTY_MS);
+    this.undoTimer = setTimeout(() => this.emptied.set(null), UNDO_EMPTY_MS);
   }
 
   protected undoEmpty(): void {
-    const lines = this.emptiedLines();
-    if (lines) {
-      this.cart.putBack(lines);
+    const emptied = this.emptied();
+    if (emptied) {
+      this.cart.putBack(emptied);
     }
     this.forgetEmptied();
   }
 
   private forgetEmptied(): void {
     clearTimeout(this.undoTimer);
-    this.emptiedLines.set(null);
+    this.emptied.set(null);
   }
 
   /** "Ya está: vaciar": the sale was registered after all. */

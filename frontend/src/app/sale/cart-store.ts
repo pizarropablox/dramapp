@@ -3,6 +3,7 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
 import {
   CART_STORAGE,
   CartOwner,
+  CartSnapshot,
   forgetCart,
   loadCart,
   PendingSale,
@@ -23,6 +24,9 @@ export interface CartLine {
   variant: ProductVariantResponse;
   quantity: number;
 }
+
+/** What "Vaciar" removed, kept while "Deshacer" is offered. */
+export type EmptiedCart = Pick<CartSnapshot, 'lines' | 'tip'>;
 
 /**
  * The order being built at the bar: one line per variant, and the tip. The payment method is not
@@ -150,20 +154,22 @@ export class CartStore {
   }
 
   /**
-   * "Vaciar": removes the lines (the tip stays) and forgets the saved cart, so a reload brings back
-   * nothing. Returns the removed lines, for "Deshacer".
+   * "Vaciar": removes the lines and the tip, so neither reaches the next customer, and forgets the
+   * saved cart, so a reload brings back nothing. Returns what was removed, for "Deshacer".
    */
-  empty(): readonly CartLine[] {
-    const lines = this.linesState();
+  empty(): EmptiedCart {
+    const emptied = { lines: this.linesState(), tip: this.tipState() };
     this.linesState.set([]);
+    this.tipState.set(NO_TIP);
     this.lastAddedState.set(null);
     forgetCart(this.storage);
-    return lines;
+    return emptied;
   }
 
-  /** "Deshacer" after empty(). */
-  putBack(lines: readonly CartLine[]): void {
-    this.linesState.set(lines);
+  /** "Deshacer" after empty(): the lines and the tip come back. */
+  putBack(emptied: EmptiedCart): void {
+    this.linesState.set(emptied.lines);
+    this.tipState.set(emptied.tip);
     this.save();
   }
 
