@@ -90,6 +90,7 @@
       [lastAdded]="cart.lastAdded()"
       [(expanded)]="cartExpanded"
       [undoable]="!!emptied()"
+      [clearDisabled]="!!cart.pending()"
       (incremented)="cart.increment($event)"
       (decremented)="cart.decrement($event)"
       (cleared)="emptyCart()"

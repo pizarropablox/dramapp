@@ -227,6 +227,10 @@ export class SalePage {
   }
 
   protected emptyCart(): void {
+    // Emptying would forget the saved "sending" cart: only "Ya está: vaciar" / "No está: seguir" can.
+    if (this.cart.pending()) {
+      return;
+    }
     this.emptied.set(this.cart.empty());
     clearTimeout(this.undoTimer);
     this.undoTimer = setTimeout(() => this.emptied.set(null), UNDO_EMPTY_MS);

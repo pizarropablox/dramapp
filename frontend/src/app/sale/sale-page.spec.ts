@@ -1661,6 +1661,51 @@ describe('SalePage', () => {
         expect(confirmButton().disabled).toBe(false);
       });
 
+      it('"Vaciar" is disabled while the sale is being sent', async () => {
+        await buildOrder();
+
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales');
+        await fixture.whenStable();
+
+        expect(button('Vaciar').disabled).toBe(true);
+      });
+
+      it('"Vaciar" is disabled while it may have been registered, and the notice survives a reload', async () => {
+        await reloadDuringTheSale();
+
+        expect(button('Vaciar').disabled).toBe(true);
+        await tap(button('Vaciar'));
+        expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+        expect(saved()).toMatchObject({ status: 'sending' });
+
+        await reload();
+
+        expect(pendingNotice()?.textContent).toContain('Esta venta pudo haberse registrado');
+        expect(cartLabels()).toEqual(['Red Bull', 'Jack Daniels · Original']);
+      });
+
+      it('"Vaciar" works again once the notice is answered', async () => {
+        await reloadDuringTheSale();
+
+        await tap(button('No está: seguir'));
+        expect(button('Vaciar').disabled).toBe(false);
+        await tap(button('Vaciar'));
+
+        expect(cartLabels()).toEqual([]);
+        expect(saved()).toBeNull();
+      });
+
+      it('"Vaciar" works again for the next order after "Ya está: vaciar"', async () => {
+        await reloadDuringTheSale();
+
+        await tap(button('Ya está: vaciar'));
+        await tap(productButton('Red Bull'));
+
+        expect(button('Vaciar').disabled).toBe(false);
+      });
+
       it('gives up after 15 s without an answer: asks to check, and ignores a late answer', async () => {
         await buildOrder();
         vi.useFakeTimers();
