@@ -11,7 +11,7 @@ export interface TipChoice {
 export const NO_TIP: TipChoice = { amount: 0, custom: false };
 
 /**
- * One compact row (44px): "Sin propina", quick amounts and "Otro".
+ * One compact row (44px): "Sin propina", quick amounts and "Otro" (two rows with "Muy grande" text).
  * "Otro" is the numeric input itself, so tapping it opens the iPhone keypad right away
  * (iOS only shows the keyboard when focus happens inside the tap).
  */
@@ -64,6 +64,30 @@ export const NO_TIP: TipChoice = { amount: 0, custom: false };
       display: grid;
       grid-template-columns: 1.6fr repeat(4, 1fr);
       gap: 0.375rem;
+    }
+
+    // "Muy grande": "Sin propina" and "$2.000" no longer fit in one row at 375px. Two rows: the amounts
+    // on top, "Sin propina" and "Otro" below.
+    :host-context([data-font-size='xlarge']) {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+
+      > * {
+        grid-column: span 2;
+      }
+
+      > :first-child {
+        grid-area: 2 / 1 / 3 / 4;
+      }
+
+      > input {
+        grid-area: 2 / 4 / 3 / 7;
+      }
+
+      // Still >= 48px to tap; the second row costs less height.
+      > button,
+      > input {
+        height: 2.5rem;
+      }
     }
 
     button,

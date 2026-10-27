@@ -11,16 +11,18 @@ import { ClpPipe } from '../shared/clp';
         <li>
           <button type="button" class="product" (click)="selected.emit(product)">
             <span class="name">{{ product.name }}</span>
-            <span class="price">{{ product.unitPrice | clp }}</span>
+            <span class="price-row">
+              <span class="price">{{ product.unitPrice | clp }}</span>
+              @if (unitsByProduct().get(product.id); as units) {
+                <span class="badge">
+                  <span class="visually-hidden">En el carrito:</span>{{ units }}
+                </span>
+              }
+            </span>
             @if (product.promoQuantity !== null && product.promoPrice !== null) {
               <span class="promo"
                 >Promo {{ product.promoQuantity }} × {{ product.promoPrice | clp }}</span
               >
-            }
-            @if (unitsByProduct().get(product.id); as units) {
-              <span class="badge">
-                <span class="visually-hidden">En el carrito:</span>{{ units }}
-              </span>
             }
           </button>
         </li>
@@ -81,6 +83,35 @@ import { ClpPipe } from '../shared/clp';
       color: var(--on-accent);
       font-weight: 700;
       text-align: center;
+    }
+
+    // Normal: the badge sits in the top right corner, beside the name.
+    .price-row {
+      display: contents;
+    }
+
+    // Larger text: the badge moves to the price row, so the name gets the whole width ("Jagger + Red
+    // Bull" would otherwise take 3 lines) and less side padding leaves "Promo 3 × $12.000" on one line.
+    :host-context([data-font-size]) {
+      .product {
+        padding-inline: 0.45rem;
+      }
+
+      .name {
+        padding-right: 0;
+      }
+
+      .price-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.25rem;
+        align-self: stretch;
+      }
+
+      .badge {
+        position: static;
+      }
     }
   `,
 })

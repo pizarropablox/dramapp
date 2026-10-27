@@ -92,6 +92,23 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
       text-align: right;
     }
 
+    // Larger text: the big total leaves the notes a narrow column ("Ahorro por promo" took 6 lines), so
+    // they go full width under it.
+    :host-context([data-font-size]) {
+      .summary {
+        flex-wrap: wrap;
+        row-gap: 0.15rem;
+      }
+
+      .total {
+        flex-basis: 100%;
+      }
+
+      .notes {
+        order: 1;
+      }
+    }
+
     .amount {
       display: flex;
       justify-content: flex-end;

@@ -3,6 +3,11 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import {
+  FONT_SIZE_STORAGE,
+  FONT_SIZE_STORAGE_KEY,
+  FontSizeStore,
+} from '../display/font-size-store';
 import { ProductResponse } from '../product/product';
 import { CART_STORAGE, CART_STORAGE_KEY } from '../sale/cart-storage';
 import { CartStore } from '../sale/cart-store';
@@ -39,6 +44,7 @@ describe('SessionBar', () => {
       imports: [SessionBar],
       providers: [
         { provide: CART_STORAGE, useValue: storage },
+        { provide: FONT_SIZE_STORAGE, useValue: storage },
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([
@@ -52,6 +58,7 @@ describe('SessionBar', () => {
 
   afterEach(() => {
     httpTesting.verify();
+    document.documentElement.removeAttribute('data-font-size');
   });
 
   function render(role: Session['role'] | null): HTMLElement {
@@ -84,6 +91,11 @@ describe('SessionBar', () => {
     expect(render('ADMIN').querySelector('a[href="/estado"]')?.textContent).toContain(
       'Estado del sistema',
     );
+  });
+
+  it('offers the text size to barra and admin alike', () => {
+    expect(render('BARRA').querySelector('app-font-size-control')).not.toBeNull();
+    expect(render('ADMIN').querySelector('app-font-size-control')).not.toBeNull();
   });
 
   it('renders nothing without a session', () => {
@@ -123,6 +135,23 @@ describe('SessionBar', () => {
     // The saved cart too: someone else may use the phone next.
     expect(storage.getItem(CART_STORAGE_KEY)).toBeNull();
     expect(TestBed.inject(Router).url).toBe('/login');
+  });
+
+  it('keeps the text size when logging out: it belongs to the phone, not the session', async () => {
+    TestBed.inject(FontSizeStore).set('xlarge');
+    const element = render('BARRA');
+
+    button(element, 'Cerrar sesión').click();
+    fixture.detectChanges();
+    button(element, 'Sí, cerrar').click();
+    httpTesting
+      .expectOne('/api/auth/logout')
+      .flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+
+    expect(TestBed.inject(FontSizeStore).size()).toBe('xlarge');
+    expect(storage.getItem(FONT_SIZE_STORAGE_KEY)).toBe('xlarge');
+    expect(document.documentElement.getAttribute('data-font-size')).toBe('xlarge');
   });
 
   it('logs out on this phone even if the backend cannot be reached', async () => {

@@ -96,6 +96,8 @@ import { CreateRefundRequest, MAX_REFUND_AMOUNT, MAX_REFUND_REASON_LENGTH } from
       inset: auto 0 0;
       z-index: 31;
       display: grid;
+      // Never wider than the screen: with larger text the inputs' intrinsic width would widen the column.
+      grid-template-columns: minmax(0, 1fr);
       gap: 0.75rem;
       max-width: 30rem;
       max-height: calc(100dvh - var(--update-bar-height));
@@ -131,6 +133,7 @@ import { CreateRefundRequest, MAX_REFUND_AMOUNT, MAX_REFUND_REASON_LENGTH } from
     }
 
     input {
+      min-width: 0;
       height: 2.75rem;
       padding: 0 0.75rem;
       border: 1px solid var(--border);
