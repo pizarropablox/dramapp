@@ -34,19 +34,19 @@ class OfficialMenuSeedTests extends PostgresIntegrationTest {
 		assertThat(menu())
 			.extracting(Product::getSortOrder, Product::getName, Product::isActive)
 			.containsExactly(
-					tuple(1, "Cerveza", true),
-					tuple(2, "Piscola", false),
+					tuple(1, "Agua 600cc", true),
+					tuple(2, "Cerveza", true),
 					tuple(3, "Piscola Alto", true),
 					tuple(4, "Piscola Mistral", true),
 					tuple(5, "Tropical Gin", true),
 					tuple(6, "Gin + Bebida", true),
-					tuple(7, "Tequila", true),
+					tuple(7, "Jack Daniels", true),
 					tuple(8, "Ballantine", true),
-					tuple(9, "Jack Daniels", true),
-					tuple(10, "Jagger + Red Bull", true),
-					tuple(11, "Jagger + Bebida", true),
-					tuple(12, "Red Bull", true),
-					tuple(13, "Agua 600cc", true));
+					tuple(9, "Jagger + Red Bull", true),
+					tuple(10, "Jagger + Bebida", true),
+					tuple(11, "Red Bull", true),
+					tuple(12, "Tequila", true),
+					tuple(13, "Piscola", false));
 	}
 
 	@Test
@@ -54,18 +54,18 @@ class OfficialMenuSeedTests extends PostgresIntegrationTest {
 		assertThat(menu().stream().filter(Product::isActive).toList())
 			.extracting(Product::getName, Product::getUnitPrice, Product::getPromoQuantity, Product::getPromoPrice)
 			.containsExactly(
+					tuple("Agua 600cc", 3000L, 2, 5000L),
 					tuple("Cerveza", 3000L, 2, 5000L),
 					tuple("Piscola Alto", 5000L, 3, 12000L),
 					tuple("Piscola Mistral", 6000L, 3, 14000L),
 					tuple("Tropical Gin", 8500L, 2, 14000L),
 					tuple("Gin + Bebida", 6000L, 2, 11000L),
-					tuple("Tequila", 3000L, 3, 8000L),
-					tuple("Ballantine", 7000L, 2, 13000L),
 					tuple("Jack Daniels", 8500L, 2, 15000L),
+					tuple("Ballantine", 7000L, 2, 13000L),
 					tuple("Jagger + Red Bull", 8500L, 2, 15000L),
 					tuple("Jagger + Bebida", 6000L, 2, 11000L),
 					tuple("Red Bull", 3500L, null, null),
-					tuple("Agua 600cc", 3000L, 2, 5000L));
+					tuple("Tequila", 3000L, 3, 8000L));
 	}
 
 	@Test
