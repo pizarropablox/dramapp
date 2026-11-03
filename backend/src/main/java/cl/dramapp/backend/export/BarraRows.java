@@ -6,14 +6,17 @@ import java.util.List;
 import java.util.Set;
 
 import cl.dramapp.backend.export.PromoAllocation.VariantTotals;
+import cl.dramapp.backend.product.MenuRules;
 
 /**
  * Rows of the "Para BARRA" sheet, in the order of section 2 of the BARRA sheet of the accounting spreadsheet, so
  * columns B:C can be pasted there at once. Pure: no Spring, no database.
  * <p>
- * Rows are matched by product and variant name (case-insensitive, like ux_product_name), never by id. The 14 rows
- * are always present, with zeros when nothing was sold. Whatever was sold but matches no row (an inactive product
- * from an older event, a product added later) is appended at the end in menu order, so no sale is ever lost.
+ * Rows are matched by product and variant name (ignoring case and spaces, like MenuRules), never by id. Names are
+ * read live, so renaming a product of the spreadsheet in the app moves its sales out of its row, closed events
+ * included, until SPREADSHEET_ROWS is updated. The 14 rows are always present, with zeros when nothing was sold.
+ * Whatever was sold but matches no row (an inactive product from an older event, a product added or renamed later)
+ * is appended at the end in menu order, so no sale is ever lost.
  */
 final class BarraRows {
 
@@ -24,8 +27,8 @@ final class BarraRows {
 	record Mapping(String label, String productName, String variantName) {
 
 		boolean matches(VariantTotals variant) {
-			return productName.equalsIgnoreCase(variant.productName())
-					&& (variantName == null || variantName.equalsIgnoreCase(variant.variantName()));
+			return MenuRules.sameName(productName, variant.productName())
+					&& (variantName == null || MenuRules.sameName(variantName, variant.variantName()));
 		}
 
 	}
