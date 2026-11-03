@@ -5,9 +5,10 @@ import { provideRouter, Router } from '@angular/router';
 import { ADMIN_MENU } from '../../testing/admin-menu';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { MenuNotice } from './menu-notice';
+import { RENAME_WARNING } from './menu-rules';
 import {
   ADDED_TO_VARIANTS_WARNING,
-  SINGLE_VARIANT_MESSAGE,
+  replacesSingleWarning,
   VariantFormPage,
 } from './variant-form-page';
 
@@ -26,9 +27,14 @@ describe('VariantFormPage', () => {
 
   afterEach(() => httpTesting.verify());
 
-  async function render(id: string, answer: 'menu' | 'offline' = 'menu'): Promise<void> {
+  async function render(
+    id: string,
+    answer: 'menu' | 'offline' = 'menu',
+    variantId?: string,
+  ): Promise<void> {
     fixture = TestBed.createComponent(VariantFormPage);
     fixture.componentRef.setInput('id', id);
+    fixture.componentRef.setInput('variantId', variantId);
     TestBed.tick();
     const request = httpTesting.expectOne('/api/products/all');
     if (answer === 'offline') {
@@ -160,14 +166,128 @@ describe('VariantFormPage', () => {
     expect(navigateByUrl).not.toHaveBeenCalled();
   });
 
-  it('explains that a product without variants cannot get one yet', async () => {
-    await render('12');
+  it('does not offer "Única" next to other variants', async () => {
+    await render('9');
+    await type('única');
 
-    expect(root().querySelector('[role="alert"]')?.textContent).toBe(SINGLE_VARIANT_MESSAGE);
-    expect(SINGLE_VARIANT_MESSAGE).toBe(
-      'Este producto no tiene variantes. Podrás agregarlas cuando se pueda editar el producto.',
-    );
-    expect(nameInput()).toBeNull();
+    expect(fieldErrors()).toEqual([
+      '«Única» es solo para productos sin variantes: no se mezcla con otras.',
+    ]);
+  });
+
+  describe('first variant of a product without variants', () => {
+    it('says it takes the place of "Única" and warns about past sales', async () => {
+      await render('12');
+
+      expect(root().textContent).toContain('Sin variantes: la primera reemplaza a «Única».');
+
+      await type('Sugar Free');
+      await click(button('Revisar'));
+
+      expect(root().querySelector('.warning')?.textContent).toBe(
+        replacesSingleWarning('Sugar Free', 'Red Bull'),
+      );
+      expect(root().querySelector('.warning')?.textContent).toBe(
+        '«Única» pasa a llamarse «Sugar Free»: las ventas pasadas de Red Bull se verán como Sugar Free. No se puede borrar, pero sí renombrar.',
+      );
+      expect(root().querySelector('.picker')).toBeNull();
+
+      await click(button('Sí, agregar'));
+      const request = httpTesting.expectOne('/api/products/12/variants');
+      expect(request.request.body).toEqual({ name: 'Sugar Free' });
+      request.flush(ADMIN_MENU[2], { status: 201, statusText: 'Created' });
+      await fixture.whenStable();
+
+      expect(TestBed.inject(MenuNotice).take()).toBe('«Sugar Free» agregada a «Red Bull».');
+    });
+  });
+
+  describe('renaming', () => {
+    it('starts with its name and accepts other letters of it', async () => {
+      await render('9', 'menu', '92');
+
+      expect(root().querySelector('h1')?.textContent).toBe('Renombrar variante');
+      expect(nameInput().value).toBe('Manzana');
+
+      await type('MANZANA');
+
+      expect(fieldErrors()).toEqual([]);
+    });
+
+    it('"Revisar" does not go on without changes', async () => {
+      await render('9', 'menu', '92');
+
+      await click(button('Revisar'));
+
+      expect(root().querySelector('app-confirm-step')).toBeNull();
+      expect(root().querySelector('[role="status"]')?.textContent).toBe('No cambiaste nada.');
+    });
+
+    it('warns about a name taken, deactivated variants included', async () => {
+      await render('9', 'menu', '92');
+      await type('honey');
+
+      expect(fieldErrors()).toEqual(['«Jack Daniels» ya tiene la variante «Honey» (desactivada).']);
+    });
+
+    it('confirms before and after, keeping its place, then renames it', async () => {
+      await render('9', 'menu', '92');
+      await type(' Apple ');
+      await click(button('Revisar'));
+
+      expect(root().querySelector('h2')?.textContent).toBe('¿Renombrar esta variante?');
+      expect(
+        Array.from(root().querySelectorAll('.picker li')).map((item) => item.textContent?.trim()),
+      ).toEqual(['Original', 'Apple']);
+      expect(root().querySelector('.picker li.new')?.textContent?.trim()).toBe('Apple');
+      expect(root().querySelector('.change')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'Antes: Manzana→Ahora: Apple',
+      );
+      expect(root().querySelector('.warning')?.textContent).toBe(RENAME_WARNING);
+
+      await click(button('Sí, renombrar'));
+      const request = httpTesting.expectOne('/api/products/9/variants/92');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({ name: 'Apple' });
+      expect(button('Renombrando…').disabled).toBe(true);
+      request.flush(ADMIN_MENU[1]);
+      await fixture.whenStable();
+
+      expect(navigateByUrl).toHaveBeenCalledWith('/admin/carta');
+      expect(TestBed.inject(MenuNotice).take()).toBe('«Manzana» ahora se llama «Apple».');
+    });
+
+    it('goes back to "Única" only if it is alone', async () => {
+      await render('9', 'menu', '92');
+      await type('Única');
+
+      expect(fieldErrors()).toEqual([
+        '«Única» es solo para productos sin variantes: no se mezcla con otras.',
+      ]);
+    });
+
+    it('does not rename a deactivated variant', async () => {
+      await render('9', 'menu', '93');
+
+      expect(root().querySelector('[role="alert"]')?.textContent).toBe(
+        'La variante «Honey» está desactivada.',
+      );
+      expect(nameInput()).toBeNull();
+    });
+
+    it('does not rename a variant of a deactivated product', async () => {
+      await render('14', 'menu', '141');
+
+      expect(root().querySelector('[role="alert"]')?.textContent).toBe(
+        '«Piscola» está desactivado.',
+      );
+    });
+
+    it('says so when the variant does not exist', async () => {
+      await render('9', 'menu', '999');
+
+      expect(root().querySelector('[role="alert"]')?.textContent).toBe('Esa variante no existe.');
+    });
   });
 
   it('does not add variants to a deactivated product', async () => {

@@ -420,6 +420,93 @@ describe('SalePage', () => {
         expect(cartLabels()).toEqual(['Red Bull', 'Vaso de bebida']);
       });
 
+      describe('with a price changed by admin', () => {
+        const RED_BULL_NOW: ProductResponse = {
+          ...MENU[2],
+          name: 'Red Bull Lata',
+          unitPrice: 4000,
+        };
+        const MENU_NOW = [MENU[0], MENU[1], RED_BULL_NOW, MENU[3]];
+
+        function total(): string | undefined {
+          return root().querySelector('app-checkout-bar .total strong')?.textContent?.trim();
+        }
+
+        it('shows the cart with the new price and name, and says the total changed', async () => {
+          signIn();
+          await setup();
+          await tap(productButton('Red Bull'));
+          expect(total()).toBe('$3.500');
+
+          backToTheForeground();
+          httpTesting.expectOne('/api/products').flush(MENU_NOW);
+          await fixture.whenStable();
+
+          expect(total()).toBe('$4.000');
+          expect(cartLabels()).toEqual(['Red Bull Lata']);
+          expect(toast()?.querySelector('p')?.textContent).toBe(
+            'El precio cambió: total $3.500 → $4.000.',
+          );
+          expect(JSON.stringify(saved())).toContain('Red Bull Lata');
+        });
+
+        it('says nothing when only the name changed', async () => {
+          await setup();
+          await tap(productButton('Red Bull'));
+
+          backToTheForeground();
+          httpTesting
+            .expectOne('/api/products')
+            .flush([MENU[0], MENU[1], { ...MENU[2], name: 'Red Bull Lata' }, MENU[3]]);
+          await fixture.whenStable();
+
+          expect(cartLabels()).toEqual(['Red Bull Lata']);
+          expect(toast()).toBeNull();
+        });
+
+        it('the cart follows the menu on coming back to Venta', async () => {
+          await setup();
+          await tap(productButton('Red Bull'));
+          fixture.destroy();
+
+          await setup(OPEN_EVENT, MENU_NOW);
+
+          expect(total()).toBe('$4.000');
+        });
+
+        it('"Deshacer" brings the lines back with the current price', async () => {
+          await setup();
+          await tap(productButton('Red Bull'));
+          await tap(button('Vaciar'));
+
+          backToTheForeground();
+          httpTesting.expectOne('/api/products').flush(MENU_NOW);
+          await fixture.whenStable();
+          await tap(button('Deshacer'));
+
+          expect(total()).toBe('$4.000');
+        });
+
+        it('waits for the answer while the sale may have been registered', async () => {
+          await setup();
+          await tap(productButton('Red Bull'));
+          await tap(button('Efectivo'));
+          confirmButton().click();
+          TestBed.tick();
+          httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+          await fixture.whenStable();
+          fixture.destroy();
+
+          await setup(OPEN_EVENT, MENU_NOW);
+
+          expect(total()).toBe('$3.500');
+
+          await tap(button('No está: seguir'));
+
+          expect(total()).toBe('$4.000');
+        });
+      });
+
       it('keeps the menu on screen while it loads and when it fails', async () => {
         await setup();
 

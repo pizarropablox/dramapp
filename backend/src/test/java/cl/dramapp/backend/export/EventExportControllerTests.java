@@ -423,6 +423,98 @@ class EventExportControllerTests extends PostgresIntegrationTest {
 		assertMoney(vaso, 9, 5000);
 	}
 
+	private void editProduct(String name, String json) {
+		long id = variant(name, name.equals("Jack Daniels") ? "Original" : "Única").getProduct().getId();
+		assertThat(mvc.put().uri("/api/products/{id}", id).contentType(MediaType.APPLICATION_JSON).content(json)
+			.exchange()).hasStatusOk();
+	}
+
+	/**
+	 * DRAMA-28: names are read live, also for a closed event. A renamed row of the spreadsheet leaves it at zero and
+	 * goes after the 14 rows; prices stay as charged and the totals do not move.
+	 */
+	@Test
+	void aRenameReachesAClosedEventAndMovesItsSalesToTheEndOfParaBarra() throws IOException {
+		Event event = eventRepository.saveAndFlush(new Event("DRAMA Noviembre", LocalDate.of(2026, 11, 28)));
+		ProductVariant manzana = variant("Jack Daniels", "Manzana");
+		sell("""
+				{"paymentMethod": "EFECTIVO", "lines": [%s, %s]}"""
+			.formatted(line(variant("Red Bull", "Única"), 2), line(manzana, 1)));
+		assertThat(mvc.post().uri("/api/events/{id}/close", event.getId()).exchange()).hasStatusOk();
+
+		editProduct("Red Bull", """
+				{"name": "Red Bull Lata", "unitPrice": 4000}""");
+		assertThat(mvc.put().uri("/api/products/{id}/variants/{variantId}", manzana.getProduct().getId(), manzana.getId())
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("""
+					{"name": "Apple"}""")
+			.exchange()).hasStatusOk();
+		entityManager.flush();
+		entityManager.clear();
+
+		Map<String, List<Row>> sheets = read(export(event.getId()));
+
+		List<Row> barra = sheets.get("Para BARRA");
+		assertBarra(rowStartingWith(barra, "Red Bull"), 0, 0, 0);
+		assertBarra(rowStartingWith(barra, "Jack Daniels Manzana"), 0, 0, 0);
+		assertThat(labels(barra).stream().filter(label -> !label.isEmpty()).toList()).endsWith("Agua",
+				"Jack Daniels Apple", "Red Bull Lata", "Total (control)");
+		assertBarra(rowStartingWith(barra, "Red Bull Lata"), 2, 0, 7000);
+		assertBarra(rowStartingWith(barra, "Total (control)"), 3, 0, 15500);
+		assertMoney(rowStartingWith(sheets.get("Resumen"), "Total"), 2, 15500);
+
+		List<Row> lines = sheets.get("Detalle");
+		assertThat(lines.get(1).getCellText(4) + "|" + lines.get(1).getCellText(5)).isEqualTo("Red Bull Lata|");
+		assertMoney(lines.get(1), 7, 3500);
+		assertThat(lines.get(2).getCellText(4) + "|" + lines.get(2).getCellText(5)).isEqualTo("Jack Daniels|Apple");
+	}
+
+	/** DRAMA-28: the row of a product stays when its "Única" becomes a real variant; Detalle shows that variant. */
+	@Test
+	void theSingleVariantBecomingARealOneStaysInItsRowOfParaBarra() throws IOException {
+		Event event = eventRepository.saveAndFlush(new Event("DRAMA Noviembre", LocalDate.of(2026, 11, 28)));
+		ProductVariant redBull = variant("Red Bull", "Única");
+		sell("""
+				{"paymentMethod": "EFECTIVO", "lines": [%s]}""".formatted(line(redBull, 1)));
+
+		assertThat(mvc.post().uri("/api/products/{id}/variants", redBull.getProduct().getId())
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("""
+					{"name": "Sugar Free"}""")
+			.exchange()).hasStatus(HttpStatus.CREATED);
+		entityManager.flush();
+		entityManager.clear();
+
+		Map<String, List<Row>> sheets = read(export(event.getId()));
+
+		assertBarra(rowStartingWith(sheets.get("Para BARRA"), "Red Bull"), 1, 0, 3500);
+		assertThat(sheets.get("Para BARRA").stream().filter(row -> row.getCellCount() > 0)).hasSize(1 + 14 + 1);
+		Row line = sheets.get("Detalle").get(1);
+		assertThat(line.getCellText(4) + "|" + line.getCellText(5)).isEqualTo("Red Bull|Sugar Free");
+	}
+
+	/** DRAMA-28: a price changed during the event; each sale keeps its own and «Para BARRA» adds both up. */
+	@Test
+	void aPriceChangedDuringTheEventIsAddedUpAsCharged() throws IOException {
+		Event event = eventRepository.saveAndFlush(new Event("DRAMA Noviembre", LocalDate.of(2026, 11, 28)));
+		String oneRedBull = """
+				{"paymentMethod": "EFECTIVO", "lines": [%s]}""".formatted(line(variant("Red Bull", "Única"), 1));
+		sell(oneRedBull);
+		editProduct("Red Bull", """
+				{"name": "Red Bull", "unitPrice": 4000}""");
+		entityManager.flush();
+		sell(oneRedBull);
+		entityManager.flush();
+		entityManager.clear();
+
+		Map<String, List<Row>> sheets = read(export(event.getId()));
+
+		assertBarra(rowStartingWith(sheets.get("Para BARRA"), "Red Bull"), 2, 0, 7500);
+		assertMoney(rowStartingWith(sheets.get("Resumen"), "Total"), 2, 7500);
+		assertMoney(sheets.get("Detalle").get(1), 7, 3500);
+		assertMoney(sheets.get("Detalle").get(2), 7, 4000);
+	}
+
 	@Test
 	void exportsAClosedEventToo() throws IOException {
 		Event event = eventWithSales();

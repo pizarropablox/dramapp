@@ -2,6 +2,7 @@ package cl.dramapp.backend.auth;
 
 import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
+import static org.springframework.http.HttpMethod.PUT;
 
 import java.util.List;
 import java.util.Set;
@@ -57,10 +58,11 @@ class SecurityConfig {
 			.requestMatchers(GET, "/api/refunds").hasRole(Role.BARRA.name())
 			.requestMatchers(POST, "/api/refunds", "/api/refunds/*/void").hasRole(Role.BARRA.name())
 
-			// Opening and closing events, the menu (DRAMA-29) and diagnostics.
+			// Opening and closing events, the menu (DRAMA-29, DRAMA-28) and diagnostics.
 			.requestMatchers(POST, "/api/events", "/api/events/*/close").hasRole(Role.ADMIN.name())
 			.requestMatchers(GET, "/api/products/all").hasRole(Role.ADMIN.name())
 			.requestMatchers(POST, "/api/products", "/api/products/*/variants").hasRole(Role.ADMIN.name())
+			.requestMatchers(PUT, "/api/products/*", "/api/products/*/variants/*").hasRole(Role.ADMIN.name())
 			.requestMatchers(GET, "/api/system/status").hasRole(Role.ADMIN.name())
 			.requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
 

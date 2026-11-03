@@ -6,6 +6,7 @@ import static java.util.stream.Collectors.toList;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -60,61 +61,129 @@ public class ProductService {
 		String name = MenuRules.productName(request.name());
 		MenuRules.checkPrices(request.unitPrice(), request.promoQuantity(), request.promoPrice());
 		List<String> variantNames = MenuRules.variantNames(request.variants());
-		productRepository.findAll().stream()
-			.filter(existing -> MenuRules.sameName(existing.getName(), name))
-			.findFirst()
-			.ifPresent(existing -> {
-				throw ProductNameTakenException.of(existing);
-			});
+		checkProductNameFree(name, null);
 
 		Product product = new Product(name, request.unitPrice(), request.promoQuantity(), request.promoPrice(),
 				productRepository.maxSortOrder() + 1);
 		for (int i = 0; i < variantNames.size(); i++) {
 			product.addVariant(variantNames.get(i), i + 1);
 		}
-		try {
-			// Flush now so a concurrent create hitting ux_product_name becomes a 409, not a 500.
-			return AdminProductResponse.from(productRepository.saveAndFlush(product));
-		}
-		catch (DataIntegrityViolationException ex) {
-			if (ex.getMessage() != null && ex.getMessage().contains("ux_product_name")) {
-				throw ProductNameTakenException.concurrent(ex);
-			}
-			throw ex;
-		}
+		return saveWithProductName(product);
 	}
 
 	/**
-	 * Adds a variant at the end of an active product's variants. Not to a product without variants: "Única" would
-	 * stay next to it until it can be renamed (DRAMA-28).
+	 * Replaces the name, the price and the promo of an active product. Past sales keep the prices they were charged
+	 * (sale_line) but show the new name, which is not stored with them.
+	 */
+	@Transactional
+	public AdminProductResponse update(Long productId, UpdateProductRequest request) {
+		Product product = findProduct(productId);
+		String name = MenuRules.productName(request.name());
+		MenuRules.checkPrices(request.unitPrice(), request.promoQuantity(), request.promoPrice());
+		if (!product.isActive()) {
+			throw MenuItemInactiveException.of(product);
+		}
+		checkProductNameFree(name, productId);
+
+		product.rename(name);
+		product.changePrices(request.unitPrice(), request.promoQuantity(), request.promoPrice());
+		return saveWithProductName(product);
+	}
+
+	/**
+	 * Adds a variant at the end of an active product's variants. The first one of a product without variants takes
+	 * the place of "Única": that row is renamed, so its sales and any cart holding it follow.
 	 */
 	@Transactional
 	public AdminProductResponse addVariant(Long productId, CreateVariantRequest request) {
-		Product product = productRepository.findById(productId)
-			.orElseThrow(() -> new ProductNotFoundException(productId));
+		Product product = findProduct(productId);
 		String name = MenuRules.variantName(request.name());
 		if (!product.isActive()) {
 			throw VariantNotAllowedException.inactive(product);
 		}
-		if (product.getVariants().stream().anyMatch(variant -> MenuRules.isSingleVariant(variant.getName()))) {
-			throw VariantNotAllowedException.singleVariant();
+		checkVariantNameFree(product, name, null);
+		List<ProductVariant> variants = product.getVariants();
+		MenuRules.checkSingleVariantAlone(name, variants.size());
+
+		if (variants.size() == 1 && MenuRules.isSingleVariant(variants.getFirst().getName())) {
+			ProductVariant single = variants.getFirst();
+			if (!single.isActive()) {
+				throw MenuItemInactiveException.of(single);
+			}
+			single.rename(name);
 		}
+		else {
+			product.addVariant(name, variants.stream().mapToInt(ProductVariant::getSortOrder).max().orElse(0) + 1);
+		}
+		return saveWithVariantName(product);
+	}
+
+	/**
+	 * Renames an active variant of an active product, keeping its id. Past sales show the new name, which is not
+	 * stored with them. Back to "Única" only if it is the product's only variant.
+	 */
+	@Transactional
+	public AdminProductResponse renameVariant(Long productId, Long variantId, UpdateVariantRequest request) {
+		Product product = findProduct(productId);
+		ProductVariant variant = product.getVariants().stream()
+			.filter(candidate -> candidate.getId().equals(variantId))
+			.findFirst()
+			.orElseThrow(() -> new VariantNotFoundException(product, variantId));
+		String name = MenuRules.variantName(request.name());
+		if (!product.isActive()) {
+			throw MenuItemInactiveException.of(product);
+		}
+		if (!variant.isActive()) {
+			throw MenuItemInactiveException.of(variant);
+		}
+		checkVariantNameFree(product, name, variantId);
+		MenuRules.checkSingleVariantAlone(name, product.getVariants().size() - 1);
+
+		variant.rename(name);
+		return saveWithVariantName(product);
+	}
+
+	private Product findProduct(Long productId) {
+		return productRepository.findById(productId).orElseThrow(() -> new ProductNotFoundException(productId));
+	}
+
+	/** Against every product, deactivated ones included, except the one being edited (null: none). */
+	private void checkProductNameFree(String name, Long editedId) {
+		productRepository.findAll().stream()
+			.filter(existing -> !existing.getId().equals(editedId) && MenuRules.sameName(existing.getName(), name))
+			.findFirst()
+			.ifPresent(existing -> {
+				throw ProductNameTakenException.of(existing);
+			});
+	}
+
+	/** Against the product's variants, deactivated ones included, except the one being renamed (null: none). */
+	private static void checkVariantNameFree(Product product, String name, Long renamedId) {
 		product.getVariants().stream()
-			.filter(existing -> MenuRules.sameName(existing.getName(), name))
+			.filter(existing -> !existing.getId().equals(renamedId) && MenuRules.sameName(existing.getName(), name))
 			.findFirst()
 			.ifPresent(existing -> {
 				throw VariantNameTakenException.of(product, existing);
 			});
+	}
 
-		int sortOrder = product.getVariants().stream().mapToInt(ProductVariant::getSortOrder).max().orElse(0) + 1;
-		product.addVariant(name, sortOrder);
+	private AdminProductResponse saveWithProductName(Product product) {
+		return save(product, "ux_product_name", ProductNameTakenException::concurrent);
+	}
+
+	private AdminProductResponse saveWithVariantName(Product product) {
+		return save(product, "ux_product_variant_product_name", VariantNameTakenException::concurrent);
+	}
+
+	/** Flushes now so a concurrent change hitting the unique index becomes a 409, not a 500. */
+	private AdminProductResponse save(Product product, String uniqueIndex,
+			Function<Throwable, ? extends RuntimeException> nameTaken) {
 		try {
-			// Flush now so a concurrent add hitting ux_product_variant_product_name becomes a 409, not a 500.
 			return AdminProductResponse.from(productRepository.saveAndFlush(product));
 		}
 		catch (DataIntegrityViolationException ex) {
-			if (ex.getMessage() != null && ex.getMessage().contains("ux_product_variant_product_name")) {
-				throw VariantNameTakenException.concurrent(ex);
+			if (ex.getMessage() != null && ex.getMessage().contains(uniqueIndex)) {
+				throw nameTaken.apply(ex);
 			}
 			throw ex;
 		}

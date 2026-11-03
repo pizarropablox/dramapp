@@ -77,6 +77,10 @@ public class Product {
 		return variant;
 	}
 
+	public void rename(String name) {
+		this.name = name;
+	}
+
 	public void changePrices(long unitPrice, Integer promoQuantity, Long promoPrice) {
 		this.unitPrice = unitPrice;
 		this.promoQuantity = promoQuantity;

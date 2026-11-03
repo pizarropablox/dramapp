@@ -126,6 +126,14 @@ class MenuRulesTests {
 	}
 
 	@Test
+	void theSingleVariantNameIsOnlyForAVariantAlone() {
+		assertThatNoException().isThrownBy(() -> MenuRules.checkSingleVariantAlone("Única", 0));
+		assertThatNoException().isThrownBy(() -> MenuRules.checkSingleVariantAlone("Coca", 2));
+		assertThat(detail(() -> MenuRules.checkSingleVariantAlone(" única ", 1)))
+			.isEqualTo("«Única» es solo para productos sin variantes: no se mezcla con otras.");
+	}
+
+	@Test
 	void formatsChileanPesos() {
 		assertThat(MenuRules.clp(3000)).isEqualTo("$3.000");
 		assertThat(MenuRules.clp(1234567)).isEqualTo("$1.234.567");

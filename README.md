@@ -155,7 +155,7 @@ Hay dos usuarios fijos, compartidos por quienes cumplen ese rol:
 | Usuario | Puede |
 |---|---|
 | `barra` | vender, anular, ver últimas ventas y totales |
-| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, agregar productos y variantes a la carta (**⚙️ Administración**) y **Estado del sistema** |
+| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, agregar y editar productos y variantes de la carta (**⚙️ Administración**) y **Estado del sistema** |
 
 Ninguna clave ni hash vive en el repositorio: solo en las variables de Render.
 
@@ -267,7 +267,7 @@ El archivo se llama `2026-10-31_DRAMA-Halloween.xlsx` (fecha primero, así la ca
 | Hoja | Qué tiene |
 |---|---|
 | **Resumen** | Las mismas cifras de Totales: por medio de pago, ventas, vendido, propina, **total con propina**, devuelto en efectivo y esperado; ventas anuladas; devoluciones activas y anuladas. |
-| **Para BARRA** | Una fila por producto en el orden de la sección 2 de la hoja BARRA de la planilla: Unidades a precio normal y Vasos en promo se pegan juntas en B:C. Lo vendido que no está en esas 14 filas (la «Piscola» de eventos viejos, productos nuevos) va al final. Debajo, separado, **Total (control)**: su ingreso es igual a «Vendido». |
+| **Para BARRA** | Una fila por producto en el orden de la sección 2 de la hoja BARRA de la planilla: Unidades a precio normal y Vasos en promo se pegan juntas en B:C. Lo vendido que no está en esas 14 filas (la «Piscola» de eventos viejos, productos nuevos o renombrados) va al final. Debajo, separado, **Total (control)**: su ingreso es igual a «Vendido». |
 | **Ventas** | Una fila por venta, anuladas incluidas con su hora y motivo. |
 | **Devoluciones** | Una fila por devolución, anuladas incluidas (no suman). |
 | **Detalle** | Una fila por producto de cada venta, con variante, cantidad y precios (también las de ventas anuladas, con su estado). |
@@ -276,16 +276,21 @@ En Para BARRA, cuando una promo mezcla variantes (1 Jack Original + 1 Jack Manza
 
 **En el teléfono:** en Android (Chrome) el archivo queda en Descargas. En iPhone el botón cambia a **Guardar Excel** y un segundo toque abre la hoja de compartir: «Guardar en Archivos», WhatsApp o Mail. Compartir necesita HTTPS, así que en la red local (http) el iPhone intenta una descarga normal.
 
-### Agregar productos y variantes (admin)
+### Agregar y editar la carta (admin)
 
 En **Totales**, `admin` tiene **⚙️** arriba a la derecha → **Administración → Carta** (barra no lo ve y el backend le responde 403). La lista muestra los productos en el orden de la grilla de Venta, con precio, promo y variantes; los desactivados van aparte al final.
 
 - **+ Agregar producto:** nombre, precio, promo opcional (vasos y precio, que debe ser menor que esos vasos a precio normal) y variantes opcionales. Mismo precio = variante; otro precio = otro producto. Sin variantes, se vende con un solo toque.
-- **+ Variante:** solo en productos que ya tienen variantes (Jack Daniels, Cerveza). Un producto sin variantes (Red Bull) no puede recibirlas todavía (DRAMA-28).
-- Antes de guardar hay una confirmación con el botón tal como se verá en Venta. **Lo agregado no se puede borrar** ni, por ahora, editar.
+- **+ Variante:** en cualquier producto activo. En uno sin variantes (Red Bull), la primera reemplaza a «Única»: esa fila cambia de nombre, así que sus ventas pasadas se ven con la variante nueva.
+- **Editar:** nombre, precio y promo (agregarla, cambiarla o quitarla). Desde ahí, **Renombrar** cada variante. Se puede volver a «Única» solo si es la única variante. Lo desactivado no se edita.
+- Antes de guardar hay una confirmación con el botón tal como se verá en Venta; al editar muestra solo lo que cambió (antes → después). Sin cambios, **Revisar** no avanza. **Lo agregado no se puede borrar**, pero sí editar.
 - El nombre no puede repetirse sin importar mayúsculas ni espacios, tampoco con un producto desactivado («Ya existe «Piscola» (desactivado)»).
 
-El producto nuevo queda al final de la grilla. Los otros teléfonos lo ven al volver a la app (al desbloquear el teléfono o cambiar de app) o al entrar de nuevo a Venta; nunca mientras una venta se está enviando o tiene el aviso de «pudo haberse registrado». En el Excel, «Para BARRA» lo agrega al final, después de las 14 filas de la planilla.
+El producto nuevo queda al final de la grilla. Los otros teléfonos ven los cambios al volver a la app (al desbloquear el teléfono o cambiar de app) o al entrar de nuevo a Venta; nunca mientras una venta se está enviando o tiene el aviso de «pudo haberse registrado». En el Excel, «Para BARRA» agrega los productos nuevos al final, después de las 14 filas de la planilla.
+
+**Precios con el evento abierto.** Se pueden cambiar. Las ventas ya hechas conservan su precio, y la venta se registra siempre al precio actual del backend: la cajera digita en la Point el **Cobrar $X** que aparece después de **Confirmar venta**. Un teléfono que aún no recargó la carta puede mostrar el total anterior en el carrito hasta ese momento. Al recargarla, el carrito toma los precios nuevos y, si cambió el total, lo avisa.
+
+**Renombrar cambia el historial.** Las líneas de venta guardan el precio, no el nombre: el nombre nuevo se ve también en ventas pasadas y eventos cerrados (Totales, Últimas ventas y las hojas Para BARRA y Detalle del Excel). Si el producto o la variante tiene fila propia en «Para BARRA», esa fila queda en 0 y sus ventas pasan al final, hasta actualizar el mapeo en `BarraRows`. Los montos no cambian y «Total (control)» sigue cuadrando. Para vender otra cosa, crea un producto nuevo en vez de renombrar.
 
 ### Límites del plan gratis
 

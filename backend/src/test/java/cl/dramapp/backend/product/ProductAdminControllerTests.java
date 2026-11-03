@@ -231,12 +231,36 @@ class ProductAdminControllerTests extends PostgresIntegrationTest {
 	}
 
 	@Test
-	void rejectsAVariantForAProductWithoutVariants() {
-		var result = addVariant(product("Red Bull").getId(), "Sugar Free");
+	void theFirstVariantOfAProductWithoutVariantsReplacesTheSingleOneKeepingItsId() {
+		Product redBull = product("Red Bull");
+		long single = redBull.getVariants().getFirst().getId();
 
-		assertProblem(result, HttpStatus.CONFLICT,
-				"Este producto no tiene variantes. Podrás agregarlas cuando se pueda editar el producto.");
-		assertThat(product("Red Bull").getVariants()).hasSize(1);
+		var first = addVariant(redBull.getId(), "Sugar Free");
+
+		assertThat(first).hasStatus(HttpStatus.CREATED);
+		assertThat(first).bodyJson().extractingPath("$.variants[*].name").asArray().containsExactly("Sugar Free");
+		assertThat(first).bodyJson().extractingPath("$.variants[0].id").convertTo(Long.class).isEqualTo(single);
+
+		var second = addVariant(redBull.getId(), "Tropical");
+
+		assertThat(second).hasStatus(HttpStatus.CREATED);
+		assertThat(second).bodyJson().extractingPath("$.variants[*].name").asArray()
+			.containsExactly("Sugar Free", "Tropical");
+	}
+
+	@Test
+	void theSingleVariantCannotBeAddedAgain() {
+		assertProblem(addVariant(product("Red Bull").getId(), "única"), HttpStatus.CONFLICT,
+				"«Red Bull» ya tiene la variante «Única».");
+	}
+
+	@Test
+	void theSingleVariantDoesNotGoNextToOtherVariants() {
+		Product jack = product("Jack Daniels");
+
+		assertProblem(addVariant(jack.getId(), "Única"), HttpStatus.BAD_REQUEST,
+				"«Única» es solo para productos sin variantes: no se mezcla con otras.");
+		assertThat(jack.getVariants()).hasSize(3);
 	}
 
 	@Test

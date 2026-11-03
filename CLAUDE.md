@@ -44,8 +44,16 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 ## Exportación a Excel (DRAMA-42)
 
 - `GET /api/events/{id}/export` (solo `admin`) genera el `.xlsx` en el backend con fastexcel (no Apache POI: pesa ~18 MB). El Resumen sale de `EventSummaryService` en la misma transacción `REPEATABLE_READ`: nunca recalcular los totales aparte.
-- Las filas de «Para BARRA» se buscan por nombre de producto y variante (`BarraRows`), en el orden de la planilla. Renombrar un producto mueve sus ventas al final; actualizar ahí el mapeo.
+- Las filas de «Para BARRA» se buscan por nombre de producto y variante (`BarraRows`, con `MenuRules.sameName`), en el orden de la planilla. Renombrar un producto mueve sus ventas al final, también en eventos cerrados; actualizar ahí el mapeo.
 - El frontend lo descarga con `HttpClient` como blob: en iPhone por la hoja de compartir (segundo toque), y en el resto con `<a download>`.
+
+## Edición de la carta (DRAMA-28)
+
+- `sale_line` guarda `variant_id` y los precios, no los nombres: renombrar cambia cómo se ven las ventas pasadas, también en eventos cerrados. Los montos no cambian.
+- Lo desactivado no se edita (409) hasta DRAMA-30. «Única» solo vale como variante sin otras al lado, contando las desactivadas.
+- La primera variante de un producto con solo «Única» renombra esa fila y conserva su id.
+- La venta se cobra al precio actual del backend: la cajera digita en la Point el «Cobrar $X» que aparece después de confirmar. `POST /api/sales` no recibe el total del teléfono.
+- La carta se recarga al entrar a Venta y al volver a primer plano, nunca con una venta enviándose o pendiente. `SalePage` llama a `CartStore.syncMenu` con cada carta; las líneas que faltan no se borran.
 
 ## PWA (DRAMA-32)
 

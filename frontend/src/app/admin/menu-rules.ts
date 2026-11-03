@@ -13,6 +13,15 @@ export const MIN_PROMO_QUANTITY = 2;
 
 export const INVALID_PRICE_MESSAGE = 'Escribe solo números, sin decimales (ej. 3000 o 3.000).';
 
+/** "Revisar" with nothing edited. */
+export const NO_CHANGES_MESSAGE = 'No cambiaste nada.';
+
+/** Names are not stored with the sales, and «Para BARRA» finds its rows by name. */
+export const RENAME_WARNING =
+  'El nombre nuevo también se verá en ventas pasadas y eventos cerrados. Si tiene fila propia en «Para BARRA», sus ventas saldrán al final del Excel.';
+
+const SINGLE_VARIANT_MIXED_MESSAGE = `«${SINGLE_VARIANT_NAME}» es solo para productos sin variantes: no se mezcla con otras.`;
+
 /** As the backend stores it: no spaces around, single spaces inside. */
 export function normalizeName(raw: string): string {
   return raw.replace(/\s+/gu, ' ').trim();
@@ -34,20 +43,33 @@ export function nameError(raw: string, of: 'producto' | 'variante'): string | nu
     : null;
 }
 
-/** «Ya existe «Piscola» (desactivado).»: names never repeat, deactivated products included. */
+/**
+ * «Ya existe «Piscola» (desactivado).»: names never repeat, deactivated products included. The product being
+ * edited, if any, does not count.
+ */
 export function takenProductError(
   raw: string,
   products: readonly AdminProductResponse[],
+  editedId?: number,
 ): string | null {
-  const existing = products.find((product) => sameName(product.name, raw));
+  const existing = products.find(
+    (product) => product.id !== editedId && sameName(product.name, raw),
+  );
   if (!existing) {
     return null;
   }
   return `Ya existe «${existing.name}»${existing.active ? '.' : ' (desactivado).'}`;
 }
 
-export function takenVariantError(raw: string, product: AdminProductResponse): string | null {
-  const existing = product.variants.find((variant) => sameName(variant.name, raw));
+/** The variant being renamed, if any, does not count. */
+export function takenVariantError(
+  raw: string,
+  product: AdminProductResponse,
+  renamedId?: number,
+): string | null {
+  const existing = product.variants.find(
+    (variant) => variant.id !== renamedId && sameName(variant.name, raw),
+  );
   if (!existing) {
     return null;
   }
@@ -105,18 +127,23 @@ export function variantListError(raws: readonly string[]): string | null {
     return `La variante «${repeated}» está repetida.`;
   }
   if (names.length > 1 && names.some(isSingleVariant)) {
-    return `«${SINGLE_VARIANT_NAME}» es solo para productos sin variantes: no se mezcla con otras.`;
+    return SINGLE_VARIANT_MIXED_MESSAGE;
   }
   return null;
+}
+
+/** "Única" is for a variant with no others next to it, deactivated ones included. */
+export function singleVariantError(raw: string, otherVariants: number): string | null {
+  return isSingleVariant(raw) && otherVariants > 0 ? SINGLE_VARIANT_MIXED_MESSAGE : null;
 }
 
 export function isSingleVariant(name: string): boolean {
   return sameName(name, SINGLE_VARIANT_NAME);
 }
 
-/** Variants can be added only to an active product with real variants (DRAMA-28 renames "Única"). */
-export function acceptsVariants(product: AdminProductResponse): boolean {
-  return product.active && !product.variants.some((variant) => isSingleVariant(variant.name));
+/** A product without real variants: its first variant takes the place of "Única". */
+export function hasOnlySingleVariant(product: AdminProductResponse): boolean {
+  return product.variants.length === 1 && isSingleVariant(product.variants[0].name);
 }
 
 /** "3 × $12.000", or null without promo. */

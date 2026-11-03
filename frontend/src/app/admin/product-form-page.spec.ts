@@ -6,7 +6,8 @@ import { ADMIN_MENU } from '../../testing/admin-menu';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { AdminProductResponse } from './admin-product';
 import { MenuNotice } from './menu-notice';
-import { ADDED_TO_GRID_WARNING, ProductFormPage } from './product-form-page';
+import { RENAME_WARNING } from './menu-rules';
+import { ADDED_TO_GRID_WARNING, PRICE_CHANGE_WARNING, ProductFormPage } from './product-form-page';
 
 const VASO: AdminProductResponse = {
   id: 20,
@@ -135,7 +136,9 @@ describe('ProductFormPage', () => {
       Variantes: 'Sin variantes',
     });
     expect(root().querySelector('.warning')?.textContent).toBe(ADDED_TO_GRID_WARNING);
-    expect(ADDED_TO_GRID_WARNING).toBe('Quedará al final de la grilla. No se puede borrar.');
+    expect(ADDED_TO_GRID_WARNING).toBe(
+      'Quedará al final de la grilla. No se puede borrar, pero sí editar.',
+    );
 
     await click(button('Sí, agregar'));
     const request = httpTesting.expectOne('/api/products');
@@ -268,6 +271,258 @@ describe('ProductFormPage', () => {
 
       await type(inputs()[3], '');
       expect(fieldErrors()).toEqual(['El nombre de la variante es obligatorio.']);
+    });
+  });
+
+  describe('editing', () => {
+    async function edit(id: string, answer: 'menu' | 'offline' = 'menu'): Promise<void> {
+      fixture = TestBed.createComponent(ProductFormPage);
+      fixture.componentRef.setInput('id', id);
+      TestBed.tick();
+      const request = httpTesting.expectOne('/api/products/all');
+      if (answer === 'offline') {
+        request.error(new ProgressEvent('error'));
+      } else {
+        request.flush(ADMIN_MENU);
+      }
+      await fixture.whenStable();
+    }
+
+    function changes(): Record<string, string> {
+      return Object.fromEntries(
+        Array.from(root().querySelectorAll('.summary div')).map((row) => [
+          row.querySelector('dt')?.textContent?.trim(),
+          row.querySelector('dd')?.textContent?.replace(/\s+/g, ' ').trim(),
+        ]),
+      );
+    }
+
+    it('starts with the product as it is, with links for its variants', async () => {
+      await edit('9');
+
+      expect(root().querySelector('h1')?.textContent).toBe('Editar producto');
+      expect(inputs().map((input) => input.value)).toEqual(['Jack Daniels', '8500', '15000']);
+      expect(root().querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
+      expect(
+        Array.from(root().querySelectorAll('.variant-list a')).map((link) =>
+          link.getAttribute('href'),
+        ),
+      ).toEqual(['/admin/carta/9/variante/91', '/admin/carta/9/variante/92']);
+      expect(root().querySelector('.variant-name.off')?.textContent).toBe('Honey (desactivada)');
+    });
+
+    it('a product without variants can get one', async () => {
+      await edit('12');
+
+      expect(root().textContent).toContain('Sin variantes: se vende con un solo toque.');
+      expect(root().querySelector('.variant-list')).toBeNull();
+      expect(
+        Array.from(root().querySelectorAll('.group a')).map((link) => link.getAttribute('href')),
+      ).toEqual(['/admin/carta/12/variante']);
+    });
+
+    describe('with unsaved changes', () => {
+      function variantActions(): HTMLElement[] {
+        return Array.from(root().querySelectorAll<HTMLElement>('.group a, .group button')).filter(
+          (action) => /Renombrar|\+ Variante/.test(action.textContent ?? ''),
+        );
+      }
+
+      function locked(): string | undefined {
+        return root().querySelector('#variants-locked')?.textContent?.trim();
+      }
+
+      function expectLocked(): void {
+        expect(variantActions()).toHaveLength(3);
+        for (const action of variantActions()) {
+          expect(action.tagName).toBe('BUTTON');
+          expect((action as HTMLButtonElement).disabled).toBe(true);
+          expect(action.getAttribute('aria-describedby')).toBe('variants-locked');
+        }
+        expect(locked()).toBe('Guarda o descarta los cambios para editar variantes');
+      }
+
+      function expectUnlocked(): void {
+        expect(variantActions().map((action) => action.getAttribute('href'))).toEqual([
+          '/admin/carta/9/variante/91',
+          '/admin/carta/9/variante/92',
+          '/admin/carta/9/variante',
+        ]);
+        expect(locked()).toBeUndefined();
+      }
+
+      it('the variant actions work while nothing was edited', async () => {
+        await edit('9');
+
+        expectUnlocked();
+      });
+
+      it('locks them on a change, and unlocks them when it is undone', async () => {
+        await edit('9');
+
+        await type(inputs()[1], '9.000');
+        expectLocked();
+
+        await type(inputs()[1], '8500');
+        expectUnlocked();
+      });
+
+      it('locks them on a new name too', async () => {
+        await edit('9');
+
+        await type(inputs()[0], 'Jack');
+
+        expectLocked();
+      });
+
+      it('locks "+ Variante" of a product without variants', async () => {
+        await edit('12');
+
+        await type(inputs()[1], '4000');
+
+        expect(variantActions().map((action) => action.tagName)).toEqual(['BUTTON']);
+        expect(locked()).toBe('Guarda o descarta los cambios para editar variantes');
+      });
+
+      it('locks them with a promo turned on but still empty', async () => {
+        await edit('12');
+
+        await click(root().querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+
+        expect(variantActions().map((action) => action.tagName)).toEqual(['BUTTON']);
+      });
+    });
+
+    it('"Revisar" does not go on without changes', async () => {
+      await edit('9');
+
+      await click(button('Revisar'));
+
+      expect(root().querySelector('app-confirm-step')).toBeNull();
+      expect(root().querySelector('[role="status"]')?.textContent).toBe('No cambiaste nada.');
+
+      await type(inputs()[1], '9.000');
+
+      expect(root().querySelector('[role="status"]')).toBeNull();
+    });
+
+    it('keeps its own name, in other letters too, as not taken', async () => {
+      await edit('9');
+
+      await type(inputs()[0], 'JACK daniels');
+
+      expect(fieldErrors()).toEqual([]);
+    });
+
+    it('still warns about the name of another product', async () => {
+      await edit('9');
+
+      await type(inputs()[0], 'red bull');
+
+      expect(fieldErrors()).toEqual(['Ya existe «Red Bull».']);
+    });
+
+    it('confirms only what changed, before and after, then saves it', async () => {
+      await edit('9');
+      await type(inputs()[1], '9.000');
+      await click(button('Revisar'));
+
+      expect(root().querySelector('h2')?.textContent).toBe('¿Guardar los cambios?');
+      expect(changes()).toEqual({ Precio: 'Antes: $8.500→Ahora: $9.000' });
+      expect(root().querySelector('.preview .product .price')?.textContent).toBe('$9.000');
+      expect(root().querySelector('.warning')?.textContent).toBe(PRICE_CHANGE_WARNING);
+      expect(PRICE_CHANGE_WARNING).toBe(
+        'Las ventas ya hechas conservan su precio. Los teléfonos toman el precio nuevo al volver a la app.',
+      );
+
+      await click(button('Sí, guardar'));
+      const request = httpTesting.expectOne('/api/products/9');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({
+        name: 'Jack Daniels',
+        unitPrice: 9000,
+        promoQuantity: 2,
+        promoPrice: 15000,
+      });
+      expect(button('Guardando…').disabled).toBe(true);
+      request.flush(ADMIN_MENU[1]);
+      await fixture.whenStable();
+
+      expect(navigateByUrl).toHaveBeenCalledWith('/admin/carta');
+      expect(TestBed.inject(MenuNotice).take()).toBe('«Jack Daniels» actualizado.');
+    });
+
+    it('warns that a new name reaches past sales and Para BARRA', async () => {
+      await edit('12');
+      await type(inputs()[0], 'Red Bull Lata');
+      await click(button('Revisar'));
+
+      expect(changes()).toEqual({ Nombre: 'Antes: Red Bull→Ahora: Red Bull Lata' });
+      expect(root().querySelector('.warning')?.textContent).toBe(RENAME_WARNING);
+      expect(RENAME_WARNING).toContain('ventas pasadas y eventos cerrados');
+      expect(RENAME_WARNING).toContain('«Para BARRA»');
+    });
+
+    it('adds a promo', async () => {
+      await edit('12');
+      await click(root().querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+      await type(inputs()[2], '6000');
+      await click(button('Revisar'));
+
+      expect(changes()).toEqual({ Promo: 'Antes: Sin promo→Ahora: 2 × $6.000' });
+    });
+
+    it('removes the promo, sending it as null', async () => {
+      await edit('9');
+      await click(root().querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+      await click(button('Revisar'));
+
+      expect(changes()).toEqual({ Promo: 'Antes: 2 × $15.000→Ahora: Sin promo' });
+
+      await click(button('Sí, guardar'));
+      const request = httpTesting.expectOne('/api/products/9');
+      expect(request.request.body).toMatchObject({ promoQuantity: null, promoPrice: null });
+      request.flush(ADMIN_MENU[1]);
+    });
+
+    it('a lower price cannot leave the promo above its glasses', async () => {
+      await edit('9');
+      await type(inputs()[1], '7000');
+
+      await click(button('Revisar'));
+
+      expect(fieldErrors()).toEqual([
+        'La promo debe costar menos que 2 vasos a precio normal ($14.000).',
+      ]);
+      expect(root().querySelector('app-confirm-step')).toBeNull();
+    });
+
+    it('does not edit a deactivated product', async () => {
+      await edit('14');
+
+      expect(root().querySelector('[role="alert"]')?.textContent).toBe(
+        '«Piscola» está desactivado.',
+      );
+      expect(inputs()).toEqual([]);
+    });
+
+    it('says so when the product does not exist', async () => {
+      await edit('999');
+
+      expect(root().querySelector('[role="alert"]')?.textContent).toBe('Ese producto no existe.');
+    });
+
+    it('shows the error and retries when the product cannot be loaded', async () => {
+      await edit('9', 'offline');
+
+      expect(root().querySelector('[role="alert"]')?.textContent).toContain(NO_CONNECTION_MESSAGE);
+      // Not click(): the page is not stable until the request is answered.
+      button('Reintentar').click();
+      TestBed.tick();
+      httpTesting.expectOne('/api/products/all').flush(ADMIN_MENU);
+      await fixture.whenStable();
+
+      expect(inputs()[0].value).toBe('Jack Daniels');
     });
   });
 

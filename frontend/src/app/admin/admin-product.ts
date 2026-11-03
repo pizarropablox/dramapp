@@ -28,3 +28,10 @@ export interface CreateProductRequest {
 export interface CreateVariantRequest {
   name: string;
 }
+
+/** Everything is replaced: promo fields in null remove the promo. */
+export type UpdateProductRequest = Omit<CreateProductRequest, 'variants'>;
+
+export interface UpdateVariantRequest {
+  name: string;
+}

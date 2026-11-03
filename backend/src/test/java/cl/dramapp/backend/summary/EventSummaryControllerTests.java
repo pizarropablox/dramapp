@@ -23,6 +23,8 @@ import cl.dramapp.backend.product.CreateProductRequest;
 import cl.dramapp.backend.product.ProductRepository;
 import cl.dramapp.backend.product.ProductService;
 import cl.dramapp.backend.product.ProductVariant;
+import cl.dramapp.backend.product.UpdateProductRequest;
+import cl.dramapp.backend.product.UpdateVariantRequest;
 import cl.dramapp.backend.refund.Refund;
 import cl.dramapp.backend.refund.RefundRepository;
 import cl.dramapp.backend.sale.PaymentMethod;
@@ -448,6 +450,39 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 			.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
 		assertPath(result, "$.title", "Sin eventos");
 		assertPath(result, "$.detail", "No hay eventos todavía.");
+	}
+
+	/** Names are read live and units are grouped by id: a rename changes the label, never the count. */
+	@Test
+	void aRenameShowsTheNewNameWithoutSplittingTheUnitsOfAClosedOrOpenEvent() {
+		ProductVariant redBull = variant("Red Bull", "Única");
+		ProductVariant manzana = variant("Jack Daniels", "Manzana");
+		Long redBullId = redBull.getProduct().getId();
+		Event closed = event("DRAMA Septiembre");
+		sale(closed, PaymentMethod.EFECTIVO, 3500, 0, Map.of(redBull, 1));
+		closed.close();
+		eventRepository.saveAndFlush(closed);
+		Event open = event("DRAMA Octubre");
+		sale(open, PaymentMethod.EFECTIVO, 3500, 0, Map.of(redBull, 1));
+		sale(open, PaymentMethod.EFECTIVO, 8500, 0, Map.of(manzana, 1));
+
+		productService.update(redBullId, new UpdateProductRequest("Red Bull Lata", 3500L, null, null));
+		productService.renameVariant(manzana.getProduct().getId(), manzana.getId(), new UpdateVariantRequest("Apple"));
+		sale(open, PaymentMethod.EFECTIVO, 3500, 0, Map.of(redBull, 1));
+		sale(open, PaymentMethod.EFECTIVO, 8500, 0, Map.of(manzana, 1));
+		entityManager.flush();
+		entityManager.clear();
+
+		var closedSummary = mvc.get().uri("/api/events/{id}/summary", closed.getId()).exchange();
+		assertThat(closedSummary).bodyJson().extractingPath("$.products[0].productName").isEqualTo("Red Bull Lata");
+		assertThat(closedSummary).bodyJson().extractingPath("$.products[0].units").isEqualTo(1);
+
+		var openSummary = mvc.get().uri("/api/events/{id}/summary", open.getId()).exchange();
+		assertThat(openSummary).bodyJson().extractingPath("$.products[*].productName").asArray()
+			.containsExactlyInAnyOrder("Jack Daniels", "Red Bull Lata");
+		assertThat(openSummary).bodyJson().extractingPath("$.products[*].units").asArray().containsExactly(2, 2);
+		assertThat(openSummary).bodyJson().extractingPath("$.products[*].variants[*].variantName").asArray()
+			.containsExactlyInAnyOrder("Apple", "Única");
 	}
 
 }

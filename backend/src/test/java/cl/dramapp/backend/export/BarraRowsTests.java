@@ -62,6 +62,26 @@ class BarraRowsTests {
 	}
 
 	@Test
+	void matchesNamesIgnoringSpacesLikeTheMenuRules() {
+		List<Row> rows = BarraRows.rows(List.of(
+				sold("Gin+Bebida", 6, "Única", 1, 1, 0, 6000),
+				sold("JackDaniels", 9, " Manzana", 2, 1, 0, 8500)));
+
+		assertThat(row(rows, "Gin + Bebida")).isEqualTo(new Row("Gin + Bebida", 1, 0, 6000));
+		assertThat(row(rows, "Jack Daniels Manzana")).isEqualTo(new Row("Jack Daniels Manzana", 1, 0, 8500));
+		assertThat(rows).hasSize(14);
+	}
+
+	@Test
+	void aRenamedProductLeavesItsRowAtZeroAndGoesAtTheEnd() {
+		List<Row> rows = BarraRows.rows(List.of(sold("Red Bull Lata", 12, "Única", 1, 2, 0, 7000)));
+
+		assertThat(row(rows, "Red Bull")).isEqualTo(new Row("Red Bull", 0, 0, 0));
+		assertThat(rows.getLast()).isEqualTo(new Row("Red Bull Lata", 2, 0, 7000));
+		assertThat(BarraRows.total(rows).revenue()).isEqualTo(7000);
+	}
+
+	@Test
 	void appendsWhatMatchesNoRowAtTheEndInMenuOrderSoNoSaleIsLost() {
 		List<Row> rows = BarraRows.rows(List.of(
 				sold("Piscola", 2, "Única", 1, 1, 0, 5500),
