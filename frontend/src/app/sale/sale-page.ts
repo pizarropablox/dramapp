@@ -33,6 +33,7 @@ import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
 import {
+  priceChangedNotice,
   REFUND_VOIDED_NOTICE,
   refundNotice,
   restoredNotice,
@@ -218,13 +219,31 @@ export class SalePage {
         }
       });
     });
+
+    // The cart outlives this screen, so it follows the menu on entering Venta and on every reload, and also a
+    // line coming from an older menu ("Deshacer"). Never while a sale may be registered: it waits for the answer.
+    effect(() => {
+      const menu = this.menu.hasValue() ? this.menu.value() : null;
+      this.cart.lines();
+      if (!menu || this.saleMayBeRegistered()) {
+        return;
+      }
+      untracked(() => {
+        const before = this.cart.totals().subtotal;
+        this.cart.syncMenu(menu);
+        const after = this.cart.totals().subtotal;
+        if (after !== before) {
+          this.showNotice(priceChangedNotice(before, after));
+        }
+      });
+    });
   }
 
   /**
    * Back in the foreground, the menu is asked again: admin may have added products (DRAMA-29), which go at the
-   * end of the grid. Never while a sale may be registered (being sent, or the pending sale notice), and only
-   * over a menu already shown: it is replaced only when the answer comes, so the grid never blinks, and a
-   * failure keeps it. The cart and the tip are not touched: their lines keep their own products.
+   * end of the grid, or edited them (DRAMA-28). Never while a sale may be registered (being sent, or the pending
+   * sale notice), and only over a menu already shown: it is replaced only when the answer comes, so the grid never
+   * blinks, and a failure keeps it. The tip is not touched; the cart takes the new prices (see the constructor).
    */
   private refreshMenu(): void {
     if (

@@ -38,6 +38,67 @@ describe('CartStore', () => {
     cart = TestBed.inject(CartStore);
   });
 
+  describe('syncMenu', () => {
+    const JACK_NOW: ProductResponse = {
+      ...JACK,
+      name: "Jack Daniel's",
+      unitPrice: 9000,
+      promoQuantity: 3,
+      promoPrice: 24000,
+      variants: [ORIGINAL, { ...MANZANA, name: 'Apple' }],
+    };
+
+    it('updates price, promo and names by variant, and the total follows', () => {
+      cart.add(JACK, ORIGINAL);
+      cart.add(JACK, MANZANA);
+      expect(cart.totals().subtotal).toBe(15000);
+
+      cart.syncMenu([JACK_NOW, RED_BULL]);
+
+      expect(cart.totals().subtotal).toBe(18000);
+      expect(cart.lines()[0].product.name).toBe("Jack Daniel's");
+      expect(cart.lines()[1].variant.name).toBe('Apple');
+      expect(cart.itemCount()).toBe(2);
+    });
+
+    it('no longer mixes prices with a line added from the new menu', () => {
+      cart.add(JACK, ORIGINAL);
+      cart.add(JACK_NOW, JACK_NOW.variants[1]);
+
+      cart.syncMenu([JACK_NOW]);
+
+      expect(cart.totals().regularTotal).toBe(18000);
+    });
+
+    it('keeps a line that is no longer on the menu', () => {
+      cart.add(RED_BULL, RED_BULL_SINGLE);
+      cart.add(JACK, ORIGINAL);
+
+      cart.syncMenu([JACK_NOW]);
+
+      expect(cart.lines().map((line) => line.variant.id)).toEqual([121, 91]);
+      expect(cart.lines()[0].product).toBe(RED_BULL);
+    });
+
+    it('a line whose variant left the menu still takes the prices of its product', () => {
+      cart.add(JACK, MANZANA);
+
+      cart.syncMenu([{ ...JACK_NOW, variants: [ORIGINAL] }]);
+
+      expect(cart.lines()[0].variant).toBe(MANZANA);
+      expect(cart.totals().subtotal).toBe(9000);
+    });
+
+    it('does nothing when the menu brings the same products', () => {
+      cart.add(JACK, ORIGINAL);
+      const lines = cart.lines();
+
+      cart.syncMenu([JACK, RED_BULL]);
+
+      expect(cart.lines()).toBe(lines);
+    });
+  });
+
   it('starts empty', () => {
     expect(cart.isEmpty()).toBe(true);
     expect(cart.itemCount()).toBe(0);

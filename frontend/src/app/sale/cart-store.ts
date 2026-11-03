@@ -117,6 +117,27 @@ export class CartStore {
     return restored;
   }
 
+  /**
+   * Admin edited the menu (DRAMA-28): the lines take the current prices, promo and names, so the total on
+   * screen is what the backend will charge. A line no longer on the menu is kept (DRAMA-30). Only sets the
+   * lines if one changed, so it can run on every change of them.
+   */
+  syncMenu(menu: readonly ProductResponse[]): void {
+    const current = this.linesState();
+    const lines = current.map((line) => {
+      const product = menu.find((candidate) => candidate.id === line.product.id) ?? line.product;
+      const variant =
+        product.variants.find((candidate) => candidate.id === line.variant.id) ?? line.variant;
+      return product === line.product && variant === line.variant
+        ? line
+        : { ...line, product, variant };
+    });
+    if (lines.some((line, i) => line !== current[i])) {
+      this.linesState.set(lines);
+      this.save();
+    }
+  }
+
   add(product: ProductResponse, variant: ProductVariantResponse): void {
     if (this.linesState().some((line) => line.variant.id === variant.id)) {
       this.increment(variant.id);
