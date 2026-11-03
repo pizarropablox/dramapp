@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import {
   Component,
@@ -10,6 +11,7 @@ import {
   untracked,
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
@@ -95,9 +97,12 @@ export class SalePage {
   private readonly refundService = inject(RefundService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly auth = inject(AuthStore);
+  private readonly document = inject(DOCUMENT);
   protected readonly cart = inject(CartStore);
 
   protected readonly menu = rxResource({ stream: () => this.productService.getMenu() });
+  /** The menu asked again when the app is back in the foreground (see refreshMenu). */
+  private menuRefresh?: Subscription;
 
   /** Checked again every 15 s (none) or 60 s (open) while this screen is shown: see CurrentEventStore. */
   protected readonly openEvent = this.currentEvent.event;
@@ -186,8 +191,12 @@ export class SalePage {
 
   constructor() {
     const stopWatching = this.currentEvent.watch();
+    const onVisibilityChange = () => this.refreshMenu();
+    this.document.addEventListener('visibilitychange', onVisibilityChange);
     this.destroyRef.onDestroy(() => {
       stopWatching();
+      this.document.removeEventListener('visibilitychange', onVisibilityChange);
+      this.menuRefresh?.unsubscribe();
       clearTimeout(this.undoTimer);
       clearTimeout(this.noticeTimer);
     });
@@ -209,6 +218,35 @@ export class SalePage {
         }
       });
     });
+  }
+
+  /**
+   * Back in the foreground, the menu is asked again: admin may have added products (DRAMA-29), which go at the
+   * end of the grid. Never while a sale may be registered (being sent, or the pending sale notice), and only
+   * over a menu already shown: it is replaced only when the answer comes, so the grid never blinks, and a
+   * failure keeps it. The cart and the tip are not touched: their lines keep their own products.
+   */
+  private refreshMenu(): void {
+    if (
+      this.document.hidden ||
+      this.saleMayBeRegistered() ||
+      !this.menu.hasValue() ||
+      (this.menuRefresh && !this.menuRefresh.closed)
+    ) {
+      return;
+    }
+    this.menuRefresh = this.productService.getMenu().subscribe({
+      next: (menu) => {
+        if (!this.saleMayBeRegistered()) {
+          this.menu.set(menu);
+        }
+      },
+      error: () => undefined,
+    });
+  }
+
+  private saleMayBeRegistered(): boolean {
+    return this.submitting() || this.cart.pending() !== null;
   }
 
   /** autoCloseMs null: until closed or the next action. */
