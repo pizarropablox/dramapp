@@ -1,8 +1,11 @@
 package cl.dramapp.backend.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.http.HttpMethod.DELETE;
 import static org.springframework.http.HttpMethod.GET;
+import static org.springframework.http.HttpMethod.PATCH;
 import static org.springframework.http.HttpMethod.POST;
+import static org.springframework.http.HttpMethod.PUT;
 
 import java.util.stream.Stream;
 
@@ -66,13 +69,21 @@ class SecurityRulesTests extends PostgresIntegrationTest {
 				Arguments.of(POST, "/api/events", Access.ADMIN),
 				Arguments.of(POST, "/api/events/999999/close", Access.ADMIN),
 				Arguments.of(GET, "/api/events/999999/export", Access.ADMIN),
+				Arguments.of(GET, "/api/products/all", Access.ADMIN),
 				Arguments.of(POST, "/api/products", Access.ADMIN),
+				Arguments.of(POST, "/api/products/999999/variants", Access.ADMIN),
 				Arguments.of(GET, "/api/system/status", Access.ADMIN),
 				Arguments.of(GET, "/actuator/health", Access.ADMIN),
 
 				Arguments.of(GET, "/api/unknown", Access.NOBODY),
 				Arguments.of(POST, "/api/events/current", Access.NOBODY),
 				Arguments.of(POST, "/api/events/999999/export", Access.NOBODY),
+				// The menu has exact paths only: editing and deactivating (DRAMA-28, DRAMA-30) are not open yet.
+				Arguments.of(GET, "/api/products/999999", Access.NOBODY),
+				Arguments.of(PUT, "/api/products/999999", Access.NOBODY),
+				Arguments.of(DELETE, "/api/products/999999", Access.NOBODY),
+				Arguments.of(GET, "/api/products/999999/variants", Access.NOBODY),
+				Arguments.of(PATCH, "/api/products/999999/variants/1", Access.NOBODY),
 				Arguments.of(GET, "/", Access.NOBODY));
 	}
 
