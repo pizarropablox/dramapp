@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -69,6 +70,38 @@ class SaleControllerTests extends PostgresIntegrationTest {
 		assertThat(result).bodyJson().extractingPath("$.status").isEqualTo(400);
 		assertThat(result).bodyJson().extractingPath("$.detail").asString().isNotBlank();
 		assertThat(saleRepository.count()).isZero();
+	}
+
+	@Test
+	void aSaleAfterAPriceChangeTakesTheNewPriceAndPastSalesKeepTheirs() {
+		openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		String twoRedBulls = """
+				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 2}]}"""
+			.formatted(redBull.getId());
+
+		var before = post(twoRedBulls);
+		redBull.getProduct().changePrices(4000, 2, 7000L);
+		entityManager.flush();
+		var after = post(twoRedBulls);
+
+		assertThat(before).bodyJson().extractingPath("$.amountToCharge").isEqualTo(7000);
+		assertThat(after).bodyJson().extractingPath("$.amountToCharge").isEqualTo(7000);
+
+		redBull.getProduct().changePrices(4500, null, null);
+		entityManager.flush();
+		var latest = post(twoRedBulls);
+
+		assertThat(latest).bodyJson().extractingPath("$.amountToCharge").isEqualTo(9000);
+
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(saleRepository.findAll().stream()
+			.sorted(Comparator.comparing(Sale::getId))
+			.map(sale -> sale.getLines().getFirst())
+			.toList())
+			.extracting(SaleLine::getUnitPrice, SaleLine::getPromoQuantity, SaleLine::getPromoPrice)
+			.containsExactly(tuple(3500L, null, null), tuple(4000L, 2, 7000L), tuple(4500L, null, null));
 	}
 
 	@Test
