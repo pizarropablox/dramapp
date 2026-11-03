@@ -10,9 +10,9 @@ import java.util.regex.Pattern;
 /**
  * Menu rules the database cannot check on its own: names compared ignoring case and spaces, a promo cheaper than its
  * glasses at the normal price, and the "Única" variant of products without real variants. Pure: no Spring, no
- * database. Editing the menu (DRAMA-28) reuses them.
+ * database. Adding (DRAMA-29) and editing (DRAMA-28) the menu share them.
  */
-final class MenuRules {
+public final class MenuRules {
 
 	/** What fits a button of the 2-column Venta grid at "Muy grande". The database allows 100. */
 	static final int MAX_NAME_LENGTH = 40;
@@ -35,7 +35,7 @@ final class MenuRules {
 	}
 
 	/** "Gin + Bebida", "gin+bebida" and " GIN  +  Bebida " are the same name. */
-	static boolean sameName(String a, String b) {
+	public static boolean sameName(String a, String b) {
 		return nameKey(a).equals(nameKey(b));
 	}
 
@@ -81,10 +81,16 @@ final class MenuRules {
 			names.add(name);
 		}
 		if (names.size() > 1 && keys.contains(nameKey(SINGLE_VARIANT_NAME))) {
-			throw new InvalidProductException(
-					"«" + SINGLE_VARIANT_NAME + "» es solo para productos sin variantes: no se mezcla con otras.");
+			throw singleVariantMixed();
 		}
 		return List.copyOf(names);
+	}
+
+	/** "Única" is for a variant with no others next to it, deactivated ones included. */
+	static void checkSingleVariantAlone(String variantName, int otherVariants) {
+		if (isSingleVariant(variantName) && otherVariants > 0) {
+			throw singleVariantMixed();
+		}
 	}
 
 	static boolean isSingleVariant(String variantName) {
@@ -94,6 +100,11 @@ final class MenuRules {
 	/** "$12.000". */
 	static String clp(long amount) {
 		return "$" + String.format(Locale.ROOT, "%,d", amount).replace(',', '.');
+	}
+
+	private static InvalidProductException singleVariantMixed() {
+		return new InvalidProductException(
+				"«" + SINGLE_VARIANT_NAME + "» es solo para productos sin variantes: no se mezcla con otras.");
 	}
 
 	private static String name(String raw, String what) {

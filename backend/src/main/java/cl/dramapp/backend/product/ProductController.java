@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -46,10 +47,21 @@ public class ProductController {
 		return ResponseEntity.created(location).body(created);
 	}
 
+	@PutMapping("/{id}")
+	public AdminProductResponse update(@PathVariable Long id, @Valid @RequestBody UpdateProductRequest request) {
+		return productService.update(id, request);
+	}
+
 	@PostMapping("/{id}/variants")
 	@ResponseStatus(HttpStatus.CREATED)
 	public AdminProductResponse addVariant(@PathVariable Long id, @Valid @RequestBody CreateVariantRequest request) {
 		return productService.addVariant(id, request);
+	}
+
+	@PutMapping("/{id}/variants/{variantId}")
+	public AdminProductResponse renameVariant(@PathVariable Long id, @PathVariable Long variantId,
+			@Valid @RequestBody UpdateVariantRequest request) {
+		return productService.renameVariant(id, variantId, request);
 	}
 
 }
