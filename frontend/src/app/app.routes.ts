@@ -26,5 +26,10 @@ export const routes: Routes = [
     canActivate: [adminGuard],
     loadComponent: () => import('./system/system-status-page').then((m) => m.SystemStatusPage),
   },
+  {
+    path: 'admin',
+    canActivate: [adminGuard],
+    loadChildren: () => import('./admin/admin.routes').then((m) => m.ADMIN_ROUTES),
+  },
   { path: '**', redirectTo: '' },
 ];

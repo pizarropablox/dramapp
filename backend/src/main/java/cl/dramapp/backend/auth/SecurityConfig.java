@@ -49,16 +49,18 @@ class SecurityConfig {
 			.requestMatchers(GET, "/api/events/*/export").hasRole(Role.ADMIN.name())
 
 			.requestMatchers(GET, "/api/auth/me").hasRole(Role.BARRA.name())
-			.requestMatchers(GET, "/api/products", "/api/products/**").hasRole(Role.BARRA.name())
+			// Exact paths only: any other /api/products path stays denied until it is listed here.
+			.requestMatchers(GET, "/api/products").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/events/current", "/api/events/*/summary").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/sales").hasRole(Role.BARRA.name())
 			.requestMatchers(POST, "/api/sales", "/api/sales/*/void").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/refunds").hasRole(Role.BARRA.name())
 			.requestMatchers(POST, "/api/refunds", "/api/refunds/*/void").hasRole(Role.BARRA.name())
 
-			// Opening and closing events, the menu (any change to /api/products) and diagnostics.
+			// Opening and closing events, the menu (DRAMA-29) and diagnostics.
 			.requestMatchers(POST, "/api/events", "/api/events/*/close").hasRole(Role.ADMIN.name())
-			.requestMatchers("/api/products", "/api/products/**").hasRole(Role.ADMIN.name())
+			.requestMatchers(GET, "/api/products/all").hasRole(Role.ADMIN.name())
+			.requestMatchers(POST, "/api/products", "/api/products/*/variants").hasRole(Role.ADMIN.name())
 			.requestMatchers(GET, "/api/system/status").hasRole(Role.ADMIN.name())
 			.requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
 

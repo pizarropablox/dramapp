@@ -484,6 +484,37 @@ describe('TotalsPage', () => {
       expect(status()).toBe('Actualizado hace 0 s');
     });
   });
+  describe('⚙️ Administración (DRAMA-29)', () => {
+    function signIn(role: Session['role']): void {
+      TestBed.inject(AuthStore).signedIn({
+        username: role.toLowerCase(),
+        role,
+        expiresAt: '2026-11-02T03:00:00Z',
+      });
+    }
+
+    function adminLink(): HTMLAnchorElement | null {
+      return root().querySelector('header.top a[aria-label="Administración"]');
+    }
+
+    it('is in the header for admin, last, leading to /admin', () => {
+      signIn('ADMIN');
+      setup();
+
+      expect(adminLink()?.getAttribute('href')).toBe('/admin');
+      expect(adminLink()?.textContent?.trim()).toBe('⚙️');
+      const header = root().querySelector('header.top')!;
+      expect(header.lastElementChild?.contains(adminLink())).toBe(true);
+    });
+
+    it('is not shown to barra', () => {
+      signIn('BARRA');
+      setup();
+
+      expect(adminLink()).toBeNull();
+    });
+  });
+
   describe('opening and closing the event', () => {
     function signIn(role: Session['role']): void {
       TestBed.inject(AuthStore).signedIn({

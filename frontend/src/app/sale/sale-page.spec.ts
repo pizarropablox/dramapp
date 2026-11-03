@@ -363,6 +363,135 @@ describe('SalePage', () => {
       await search('xyz');
       expect(text()).toContain('Sin productos para “xyz”');
     });
+
+    // DRAMA-29: admin may add products from another phone while this one sells.
+    describe('back in the foreground', () => {
+      const VASO: ProductResponse = {
+        id: 20,
+        name: 'Vaso de bebida',
+        unitPrice: 3000,
+        promoQuantity: null,
+        promoPrice: null,
+        variants: [{ id: 200, name: 'Única' }],
+      };
+
+      afterEach(() => {
+        // Visible again without announcing it: that would ask the backend once more.
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+      });
+
+      function setHidden(hidden: boolean): void {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }
+
+      /** Leaves and comes back; the open event is asked again too (CurrentEventStore). */
+      function backToTheForeground(): void {
+        setHidden(true);
+        setHidden(false);
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+      }
+
+      function names(): (string | undefined)[] {
+        return Array.from(root().querySelectorAll('app-product-grid .name')).map((name) =>
+          name.textContent?.trim(),
+        );
+      }
+
+      it('loads the menu again, with new products at the end, keeping the cart and the tip', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('$1.000'));
+
+        backToTheForeground();
+        httpTesting.expectOne('/api/products').flush([...MENU, VASO]);
+        await fixture.whenStable();
+
+        expect(names()).toEqual([
+          'Cerveza',
+          'Jack Daniels',
+          'Red Bull',
+          'Agua 600cc',
+          'Vaso de bebida',
+        ]);
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+        await tap(productButton('Vaso de bebida'));
+        expect(cartLabels()).toEqual(['Red Bull', 'Vaso de bebida']);
+      });
+
+      it('keeps the menu on screen while it loads and when it fails', async () => {
+        await setup();
+
+        backToTheForeground();
+        await fixture.whenStable();
+        expect(names()).toHaveLength(4);
+        expect(text()).not.toContain('Cargando carta');
+
+        httpTesting.expectOne('/api/products').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        expect(names()).toHaveLength(4);
+        expect(root().querySelector('.menu [role="alert"]')).toBeNull();
+      });
+
+      it('does not ask while the app is hidden', async () => {
+        await setup();
+
+        setHidden(true);
+
+        httpTesting.expectNone('/api/products');
+      });
+
+      it('never loads it while a sale is being sent', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+
+        backToTheForeground();
+
+        httpTesting.expectNone('/api/products');
+        httpTesting
+          .expectOne('/api/sales')
+          .flush(saleResponse({ subtotal: 3500, tipAmount: 0, amountToCharge: 3500 }));
+      });
+
+      it('never loads it while the sale may have been registered', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+        expect(root().querySelector('app-pending-sale-notice')).not.toBeNull();
+
+        backToTheForeground();
+
+        httpTesting.expectNone('/api/products');
+        expect(cartLabels()).toEqual(['Red Bull']);
+      });
+
+      it('does not apply an answer that arrives once a sale is being sent', async () => {
+        await setup();
+        backToTheForeground();
+        const menuRequest = httpTesting.expectOne('/api/products');
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+
+        menuRequest.flush([...MENU, VASO]);
+        await fixture.whenStable();
+
+        expect(names()).not.toContain('Vaso de bebida');
+        httpTesting
+          .expectOne('/api/sales')
+          .flush(saleResponse({ subtotal: 3500, tipAmount: 0, amountToCharge: 3500 }));
+      });
+    });
   });
 
   describe('adding products', () => {
