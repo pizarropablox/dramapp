@@ -8,6 +8,9 @@
         <span class="state closed">Evento cerrado</span>
       }
     }
+    @if (auth.isAdmin()) {
+      <app-admin-link />
+    }
   </header>
 
   @if (notice(); as message) {

@@ -36,6 +36,11 @@ dd {
   text-decoration: none;
 }
 
+// With admin's ⚙️ after it, the state stays on the right, not centered.
+.back + .state {
+  margin-inline-start: auto;
+}
+
 .state {
   display: inline-flex;
   align-items: center;

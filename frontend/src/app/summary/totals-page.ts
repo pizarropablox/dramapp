@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { AdminLink } from '../admin/admin-link';
 import { AuthStore } from '../auth/auth-store';
 import { SessionBar } from '../auth/session-bar';
 import { CurrentEventStore } from '../event/current-event-store';
@@ -42,7 +43,7 @@ function formatElapsed(ms: number): string {
  */
 @Component({
   selector: 'app-totals-page',
-  imports: [ClpPipe, CloseEventDialog, OpenEventDialog, RouterLink, SessionBar],
+  imports: [AdminLink, ClpPipe, CloseEventDialog, OpenEventDialog, RouterLink, SessionBar],
   templateUrl: './totals-page.html',
   styleUrl: './totals-page.scss',
 })
