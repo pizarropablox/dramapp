@@ -155,7 +155,7 @@ Hay dos usuarios fijos, compartidos por quienes cumplen ese rol:
 | Usuario | Puede |
 |---|---|
 | `barra` | vender, anular, ver últimas ventas y totales |
-| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, la carta y **Estado del sistema** |
+| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, agregar productos y variantes a la carta (**⚙️ Administración**) y **Estado del sistema** |
 
 Ninguna clave ni hash vive en el repositorio: solo en las variables de Render.
 
@@ -275,6 +275,17 @@ El archivo se llama `2026-10-31_DRAMA-Halloween.xlsx` (fecha primero, así la ca
 En Para BARRA, cuando una promo mezcla variantes (1 Jack Original + 1 Jack Manzana), cada vaso cuenta como vaso en promo de su variante y la plata se reparte por vaso. Los vasos que quedan fuera de la promo son los últimos del carrito. La plata por producto es exacta; si no se divide justo entre variantes, el peso que sobra va a la primera en la carta.
 
 **En el teléfono:** en Android (Chrome) el archivo queda en Descargas. En iPhone el botón cambia a **Guardar Excel** y un segundo toque abre la hoja de compartir: «Guardar en Archivos», WhatsApp o Mail. Compartir necesita HTTPS, así que en la red local (http) el iPhone intenta una descarga normal.
+
+### Agregar productos y variantes (admin)
+
+En **Totales**, `admin` tiene **⚙️** arriba a la derecha → **Administración → Carta** (barra no lo ve y el backend le responde 403). La lista muestra los productos en el orden de la grilla de Venta, con precio, promo y variantes; los desactivados van aparte al final.
+
+- **+ Agregar producto:** nombre, precio, promo opcional (vasos y precio, que debe ser menor que esos vasos a precio normal) y variantes opcionales. Mismo precio = variante; otro precio = otro producto. Sin variantes, se vende con un solo toque.
+- **+ Variante:** solo en productos que ya tienen variantes (Jack Daniels, Cerveza). Un producto sin variantes (Red Bull) no puede recibirlas todavía (DRAMA-28).
+- Antes de guardar hay una confirmación con el botón tal como se verá en Venta. **Lo agregado no se puede borrar** ni, por ahora, editar.
+- El nombre no puede repetirse sin importar mayúsculas ni espacios, tampoco con un producto desactivado («Ya existe «Piscola» (desactivado)»).
+
+El producto nuevo queda al final de la grilla. Los otros teléfonos lo ven al volver a la app (al desbloquear el teléfono o cambiar de app) o al entrar de nuevo a Venta; nunca mientras una venta se está enviando o tiene el aviso de «pudo haberse registrado». En el Excel, «Para BARRA» lo agrega al final, después de las 14 filas de la planilla.
 
 ### Límites del plan gratis
 
