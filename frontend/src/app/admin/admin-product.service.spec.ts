@@ -28,6 +28,25 @@ describe('AdminProductService', () => {
 
   afterEach(() => httpTesting.verify());
 
+  it('edits a product with PUT', () => {
+    const body = { name: 'Vaso', unitPrice: 3500, promoQuantity: null, promoPrice: null };
+    service.update(20, body).subscribe();
+
+    const request = httpTesting.expectOne('/api/products/20');
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual(body);
+    request.flush(VASO);
+  });
+
+  it('renames a variant with PUT', () => {
+    service.renameVariant(20, 200, { name: 'Coca' }).subscribe();
+
+    const request = httpTesting.expectOne('/api/products/20/variants/200');
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({ name: 'Coca' });
+    request.flush(VASO);
+  });
+
   it('lists every product from /api/products/all', () => {
     let products: AdminProductResponse[] | undefined;
     service.getAll().subscribe((value) => (products = value));

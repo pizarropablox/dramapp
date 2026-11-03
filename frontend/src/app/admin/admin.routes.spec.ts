@@ -27,7 +27,14 @@ describe('admin routes', () => {
     httpTesting.match(() => true);
   });
 
-  const ADMIN_URLS = ['/admin', '/admin/carta', '/admin/carta/nuevo', '/admin/carta/9/variante'];
+  const ADMIN_URLS = [
+    '/admin',
+    '/admin/carta',
+    '/admin/carta/nuevo',
+    '/admin/carta/9/editar',
+    '/admin/carta/9/variante',
+    '/admin/carta/9/variante/92',
+  ];
 
   for (const url of ADMIN_URLS) {
     it(`sends barra from ${url} back to the sale screen`, async () => {

@@ -8,6 +8,7 @@ import {
   inject,
   Injector,
   input,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -20,21 +21,31 @@ import { AdminProductService } from './admin-product.service';
 import { ConfirmStep } from './confirm-step';
 import { MenuNotice } from './menu-notice';
 import {
-  acceptsVariants,
+  hasOnlySingleVariant,
+  isSingleVariant,
   nameError,
+  NO_CHANGES_MESSAGE,
   normalizeName,
   previewProduct,
+  RENAME_WARNING,
   sameName,
+  singleVariantError,
   takenVariantError,
 } from './menu-rules';
 
-export const ADDED_TO_VARIANTS_WARNING = 'Quedará al final de las variantes. No se puede borrar.';
+const CANNOT_BE_DELETED = 'No se puede borrar, pero sí renombrar.';
 
-/** The backend's message (409) for a product without variants, shown before even trying. */
-export const SINGLE_VARIANT_MESSAGE =
-  'Este producto no tiene variantes. Podrás agregarlas cuando se pueda editar el producto.';
+export const ADDED_TO_VARIANTS_WARNING = `Quedará al final de las variantes. ${CANNOT_BE_DELETED}`;
 
-/** Adds a variant (same price) to an active product with variants: the name, then a confirmation. */
+/** "Única" is renamed: its sales follow, in closed events too. */
+export function replacesSingleWarning(variantName: string, productName: string): string {
+  return `«Única» pasa a llamarse «${variantName}»: las ventas pasadas de ${productName} se verán como ${variantName}. ${CANNOT_BE_DELETED}`;
+}
+
+/**
+ * Adds a variant (same price) to an active product, or renames one (/admin/carta/:id/variante/:variantId): the
+ * name, then a confirmation. The first variant of a product without variants takes the place of "Única".
+ */
 @Component({
   selector: 'app-variant-form-page',
   imports: [ConfirmStep, FormField, ProductGrid, RouterLink],
@@ -43,7 +54,7 @@ export const SINGLE_VARIANT_MESSAGE =
       <header class="top">
         <a class="back" routerLink="/admin/carta">← Carta</a>
       </header>
-      <h1>Agregar variante</h1>
+      <h1>{{ renaming() ? 'Renombrar variante' : 'Agregar variante' }}</h1>
 
       @if (products.isLoading()) {
         <p class="note" role="status">Cargando producto…</p>
@@ -59,9 +70,15 @@ export const SINGLE_VARIANT_MESSAGE =
         @if (step() === 'form') {
           <form class="variant-form" novalidate (submit)="review($event)">
             <p class="product-name">{{ current.name }}</p>
-            <p class="hint">Variantes: {{ activeVariantNames(current).join(', ') }}</p>
+            @if (replacesSingle()) {
+              <p class="hint">Sin variantes: la primera reemplaza a «Única».</p>
+            } @else {
+              <p class="hint">Variantes: {{ activeVariantNames(current).join(', ') }}</p>
+            }
             <label class="field">
-              <span>Nombre de la variante nueva</span>
+              <span>{{
+                renaming() ? 'Nombre de la variante' : 'Nombre de la variante nueva'
+              }}</span>
               <input
                 type="text"
                 autocomplete="off"
@@ -75,9 +92,14 @@ export const SINGLE_VARIANT_MESSAGE =
             @if (nameErrorMessage(); as message) {
               <p id="variant-name-error" class="field-error">{{ message }}</p>
             }
-            <p class="hint">
-              Se vende al mismo precio que las otras variantes de {{ current.name }}.
-            </p>
+            @if (!renaming() && !replacesSingle()) {
+              <p class="hint">
+                Se vende al mismo precio que las otras variantes de {{ current.name }}.
+              </p>
+            }
+            @if (unchanged() && !nameChanged()) {
+              <p class="note" role="status">{{ noChangesMessage }}</p>
+            }
             <div class="actions">
               <a class="secondary" routerLink="/admin/carta">Cancelar</a>
               <button type="submit" class="primary">Revisar</button>
@@ -85,8 +107,10 @@ export const SINGLE_VARIANT_MESSAGE =
           </form>
         } @else {
           <app-confirm-step
-            heading="¿Agregar esta variante?"
-            [warning]="warning"
+            [heading]="renaming() ? '¿Renombrar esta variante?' : '¿Agregar esta variante?'"
+            [warning]="warning()"
+            [confirmLabel]="renaming() ? 'Sí, renombrar' : 'Sí, agregar'"
+            [submittingLabel]="renaming() ? 'Renombrando…' : 'Agregando…'"
             [submitting]="submitting()"
             [error]="saveError()"
             (back)="backToForm()"
@@ -95,21 +119,36 @@ export const SINGLE_VARIANT_MESSAGE =
             <div class="preview" inert aria-hidden="true">
               <p class="hint">Así se verá en Venta:</p>
               <app-product-grid [products]="preview()" />
-              <ul class="picker">
-                @for (name of previewVariants(); track $index; let last = $last) {
-                  <li [class.new]="last">{{ name }}</li>
-                }
-              </ul>
+              @if (previewVariants().length > 1) {
+                <ul class="picker">
+                  @for (name of previewVariants(); track $index) {
+                    <li [class.new]="name === newName()">{{ name }}</li>
+                  }
+                </ul>
+              }
             </div>
             <dl class="summary">
               <div>
                 <dt>Producto</dt>
                 <dd>{{ current.name }}</dd>
               </div>
-              <div>
-                <dt>Variante nueva</dt>
-                <dd>{{ newName() }}</dd>
-              </div>
+              @if (variant(); as renamed) {
+                <div>
+                  <dt>Nombre</dt>
+                  <dd class="change">
+                    <span class="before"
+                      ><span class="visually-hidden">Antes: </span>{{ renamed.name }}</span
+                    >
+                    <span aria-hidden="true">→</span>
+                    <span><span class="visually-hidden">Ahora: </span>{{ newName() }}</span>
+                  </dd>
+                </div>
+              } @else {
+                <div>
+                  <dt>Variante nueva</dt>
+                  <dd>{{ newName() }}</dd>
+                </div>
+              }
               <div>
                 <dt>Variantes</dt>
                 <dd>{{ previewVariants().join(', ') }}</dd>
@@ -186,6 +225,17 @@ export const SINGLE_VARIANT_MESSAGE =
       font-weight: 700;
       overflow-wrap: anywhere;
     }
+
+    .change {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.1rem 0.4rem;
+    }
+
+    .before {
+      color: var(--muted);
+      font-weight: 400;
+    }
   `,
 })
 export class VariantFormPage {
@@ -198,6 +248,8 @@ export class VariantFormPage {
 
   /** The :id of /admin/carta/:id/variante. */
   readonly id = input.required<string>();
+  /** The :variantId of /admin/carta/:id/variante/:variantId; none when adding a variant. */
+  readonly variantId = input<string>();
 
   protected readonly products = rxResource({ stream: () => this.adminProducts.getAll() });
   protected readonly loadErrorMessage = computed(() => errorMessage(this.products.error()));
@@ -206,29 +258,55 @@ export class VariantFormPage {
     const products = this.products.hasValue() ? this.products.value() : [];
     return products.find((product) => product.id === id) ?? null;
   });
-  /** Why no variant can be added here, if so. */
+  protected readonly renaming = computed(() => this.variantId() !== undefined);
+  /** The variant being renamed. */
+  protected readonly variant = computed(() => {
+    const id = Number(this.variantId());
+    return this.product()?.variants.find((variant) => variant.id === id) ?? null;
+  });
+  /** The first variant of a product without variants: "Única" takes its name. */
+  protected readonly replacesSingle = computed(() => {
+    const product = this.product();
+    return !this.renaming() && !!product && hasOnlySingleVariant(product);
+  });
+  /** Why nothing can be done here, if so. */
   protected readonly blocked = computed(() => {
     const product = this.product();
-    if (!product || acceptsVariants(product)) {
+    if (!product) {
       return null;
     }
-    return product.active ? SINGLE_VARIANT_MESSAGE : `«${product.name}» está desactivado.`;
+    if (!product.active) {
+      return `«${product.name}» está desactivado.`;
+    }
+    if (!this.renaming()) {
+      return null;
+    }
+    const variant = this.variant();
+    if (!variant) {
+      return 'Esa variante no existe.';
+    }
+    return variant.active ? null : `La variante «${variant.name}» está desactivada.`;
   });
 
-  protected readonly warning = ADDED_TO_VARIANTS_WARNING;
+  protected readonly noChangesMessage = NO_CHANGES_MESSAGE;
   protected readonly step = signal<'form' | 'confirm'>('form');
   protected readonly submitting = signal(false);
   protected readonly saveError = signal<string | null>(null);
   /** The backend's 409: shown under the name until it is changed. */
   private readonly nameConflict = signal<{ name: string; message: string } | null>(null);
+  /** "Revisar" was tapped with nothing edited. */
+  protected readonly unchanged = signal(false);
 
-  protected readonly model = signal({ name: '' });
+  protected readonly model = linkedSignal(() => ({ name: this.variant()?.name ?? '' }));
   protected readonly variantForm = form(this.model, (path) => {
     validate(path.name, ({ value }) => {
       const product = this.product();
+      const renamed = this.variant();
+      const others = (product?.variants.length ?? 0) - (renamed ? 1 : 0);
       const message =
         nameError(value(), 'variante') ??
-        (product ? takenVariantError(value(), product) : null) ??
+        (product ? takenVariantError(value(), product, renamed?.id) : null) ??
+        singleVariantError(value(), others) ??
         this.conflictWith(value());
       return message ? { kind: 'menu', message } : null;
     });
@@ -239,14 +317,32 @@ export class VariantFormPage {
   });
 
   protected readonly newName = computed(() => normalizeName(this.model().name));
-  /** The active variants as the picker in Venta will list them: the new one last. */
+  protected readonly nameChanged = computed(() => this.newName() !== this.variant()?.name);
+  /** The active variants as the picker in Venta will list them: a new one last, a renamed one in its place. */
   protected readonly previewVariants = computed(() => {
     const product = this.product();
-    return product ? [...this.activeVariantNames(product), this.newName()] : [];
+    if (!product) {
+      return [];
+    }
+    const names = this.activeVariantNames(product);
+    const renamed = this.variant();
+    return renamed
+      ? names.map((name) => (name === renamed.name ? this.newName() : name))
+      : [...names.filter((name) => !isSingleVariant(name)), this.newName()];
   });
   protected readonly preview = computed(() => {
     const product = this.product();
     return product ? [previewProduct({ ...product, variants: this.previewVariants() })] : [];
+  });
+
+  protected readonly warning = computed(() => {
+    if (this.renaming()) {
+      return RENAME_WARNING;
+    }
+    const product = this.product();
+    return product && this.replacesSingle()
+      ? replacesSingleWarning(this.newName(), product.name)
+      : ADDED_TO_VARIANTS_WARNING;
   });
 
   protected activeVariantNames(product: AdminProductResponse): string[] {
@@ -257,7 +353,11 @@ export class VariantFormPage {
     event.preventDefault();
     this.saveError.set(null);
     const valid = await submit(this.variantForm, async () => {
-      this.step.set('confirm');
+      if (this.renaming() && !this.nameChanged()) {
+        this.unchanged.set(true);
+      } else {
+        this.step.set('confirm');
+      }
       return undefined;
     });
     if (!valid) {
@@ -275,27 +375,32 @@ export class VariantFormPage {
       return;
     }
     const name = this.newName();
+    const renamed = this.variant();
     this.submitting.set(true);
     this.saveError.set(null);
-    this.adminProducts
-      .addVariant(product.id, { name })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.menuNotice.set(`«${name}» agregada a «${product.name}».`);
-          void this.router.navigateByUrl('/admin/carta');
-        },
-        error: (error: unknown) => {
-          this.submitting.set(false);
-          if (error instanceof HttpErrorResponse && error.status === HttpStatusCode.Conflict) {
-            this.nameConflict.set({ name, message: errorMessage(error) });
-            this.step.set('form');
-            this.focusAfterRender('[aria-invalid="true"]');
-          } else {
-            this.saveError.set(errorMessage(error));
-          }
-        },
-      });
+    const saved = renamed
+      ? this.adminProducts.renameVariant(product.id, renamed.id, { name })
+      : this.adminProducts.addVariant(product.id, { name });
+    saved.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.menuNotice.set(
+          renamed
+            ? `«${renamed.name}» ahora se llama «${name}».`
+            : `«${name}» agregada a «${product.name}».`,
+        );
+        void this.router.navigateByUrl('/admin/carta');
+      },
+      error: (error: unknown) => {
+        this.submitting.set(false);
+        if (error instanceof HttpErrorResponse && error.status === HttpStatusCode.Conflict) {
+          this.nameConflict.set({ name, message: errorMessage(error) });
+          this.step.set('form');
+          this.focusAfterRender('[aria-invalid="true"]');
+        } else {
+          this.saveError.set(errorMessage(error));
+        }
+      },
+    });
   }
 
   private conflictWith(name: string): string | null {

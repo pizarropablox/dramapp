@@ -60,13 +60,18 @@ describe('MenuPage', () => {
     expect(cards[2].textContent).toContain('Sin variantes');
   });
 
-  it('offers "+ Variante" only for products with real variants', async () => {
+  it('offers "Editar" and "+ Variante" on every active product', async () => {
     await render();
 
-    const links = activeCards().map(
-      (card) => card.querySelector<HTMLAnchorElement>('a')?.getAttribute('href') ?? null,
+    const links = activeCards().map((card) =>
+      Array.from(card.querySelectorAll('a')).map((link) => link.getAttribute('href')),
     );
-    expect(links).toEqual(['/admin/carta/1/variante', '/admin/carta/9/variante', null]);
+    expect(links).toEqual([
+      ['/admin/carta/1/editar', '/admin/carta/1/variante'],
+      ['/admin/carta/9/editar', '/admin/carta/9/variante'],
+      ['/admin/carta/12/editar', '/admin/carta/12/variante'],
+    ]);
+    expect(activeCards()[2].querySelector('a')?.textContent?.trim()).toBe('Editar Red Bull');
   });
 
   it('keeps the deactivated products apart, at the end, without actions', async () => {

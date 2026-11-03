@@ -33,6 +33,11 @@ export function refundNotice(amount: number): string {
 /** Shown once a refund entered by mistake is voided. */
 export const REFUND_VOIDED_NOTICE = 'Devolución anulada.';
 
+/** Shown when the menu brings another price for what is in the cart. */
+export function priceChangedNotice(before: number, after: number): string {
+  return `El precio cambió: total ${formatClp(before)} → ${formatClp(after)}.`;
+}
+
 /**
  * Shown once a saved cart comes back after a reload: "Pedido recuperado · 3 productos", or naming what
  * was dropped because it is no longer on the menu.

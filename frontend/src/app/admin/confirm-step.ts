@@ -1,9 +1,9 @@
 import { afterNextRender, Component, ElementRef, input, output, viewChild } from '@angular/core';
 
 /**
- * The last step before adding something to the menu, which cannot be deleted afterwards: what will be saved
- * (projected), the warning, and "Volver" / "Sí, agregar". The title takes the focus, so a screen reader starts
- * here.
+ * The last step before adding something to the menu, which cannot be deleted afterwards, or editing it: what
+ * will be saved (projected), the warning, and "Volver" / "Sí, agregar". The title takes the focus, so a screen
+ * reader starts here.
  */
 @Component({
   selector: 'app-confirm-step',
@@ -25,7 +25,7 @@ import { afterNextRender, Component, ElementRef, input, output, viewChild } from
           [disabled]="submitting()"
           (click)="confirmed.emit()"
         >
-          {{ submitting() ? 'Agregando…' : 'Sí, agregar' }}
+          {{ submitting() ? submittingLabel() : confirmLabel() }}
         </button>
       </div>
     </section>
@@ -90,6 +90,8 @@ import { afterNextRender, Component, ElementRef, input, output, viewChild } from
 export class ConfirmStep {
   readonly heading = input.required<string>();
   readonly warning = input.required<string>();
+  readonly confirmLabel = input('Sí, agregar');
+  readonly submittingLabel = input('Agregando…');
   readonly submitting = input(false);
   readonly error = input<string | null>(null);
 

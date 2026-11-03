@@ -16,7 +16,7 @@ import { RouterLink } from '@angular/router';
           <li>
             <a class="section" routerLink="/admin/carta">
               <span class="title">Carta</span>
-              <span class="hint">Agregar productos y variantes</span>
+              <span class="hint">Agregar y editar productos y variantes</span>
             </a>
           </li>
         </ul>

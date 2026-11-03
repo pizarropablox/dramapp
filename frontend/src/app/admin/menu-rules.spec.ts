@@ -1,6 +1,6 @@
 import { AdminProductResponse } from './admin-product';
 import {
-  acceptsVariants,
+  hasOnlySingleVariant,
   INVALID_PRICE_MESSAGE,
   nameError,
   normalizeName,
@@ -9,6 +9,7 @@ import {
   priceError,
   promoLabel,
   promoPriceError,
+  singleVariantError,
   sameName,
   takenProductError,
   takenVariantError,
@@ -137,10 +138,28 @@ describe('menu rules', () => {
     expect(variantListError(['', ''])).toBeNull();
   });
 
-  it('accepts variants only for active products with real variants', () => {
-    expect(acceptsVariants(JACK)).toBe(true);
-    expect(acceptsVariants(RED_BULL)).toBe(false);
-    expect(acceptsVariants({ ...JACK, active: false })).toBe(false);
+  it('tells a product without real variants', () => {
+    expect(hasOnlySingleVariant(JACK)).toBe(false);
+    expect(hasOnlySingleVariant(RED_BULL)).toBe(true);
+    expect(
+      hasOnlySingleVariant({ ...RED_BULL, variants: [{ id: 1, name: 'Coca', active: true }] }),
+    ).toBe(false);
+  });
+
+  it('keeps "Única" for a variant alone', () => {
+    expect(singleVariantError('Única', 0)).toBeNull();
+    expect(singleVariantError('Coca', 2)).toBeNull();
+    expect(singleVariantError(' única ', 1)).toBe(
+      '«Única» es solo para productos sin variantes: no se mezcla con otras.',
+    );
+  });
+
+  it('does not count what is being edited as taken', () => {
+    expect(takenProductError('JACK daniels', [JACK, RED_BULL], JACK.id)).toBeNull();
+    expect(takenProductError('red bull', [JACK, RED_BULL], JACK.id)).toBe('Ya existe «Red Bull».');
+    const [original, manzana] = JACK.variants;
+    expect(takenVariantError(original.name.toUpperCase(), JACK, original.id)).toBeNull();
+    expect(takenVariantError(manzana.name, JACK, original.id)).toContain('ya tiene la variante');
   });
 
   it('labels the promo', () => {

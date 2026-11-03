@@ -7,11 +7,11 @@ import { errorMessage } from '../shared/api-error';
 import { AdminProductResponse } from './admin-product';
 import { AdminProductService } from './admin-product.service';
 import { MenuNotice } from './menu-notice';
-import { acceptsVariants, isSingleVariant, promoLabel } from './menu-rules';
+import { isSingleVariant, promoLabel } from './menu-rules';
 
 /**
- * ⚙️ Administración > Carta: every product in menu order, deactivated ones apart at the end. Adding a product
- * or a variant opens its own screen. Editing (DRAMA-28) and deactivating (DRAMA-30) come later.
+ * ⚙️ Administración > Carta: every product in menu order, deactivated ones apart at the end. Adding and editing
+ * open their own screens; deactivated products are not edited. Deactivating (DRAMA-30) comes later.
  */
 @Component({
   selector: 'app-menu-page',
@@ -42,11 +42,14 @@ import { acceptsVariants, isSingleVariant, promoLabel } from './menu-rules';
                 [ngTemplateOutlet]="card"
                 [ngTemplateOutletContext]="{ $implicit: product }"
               />
-              @if (acceptsVariants(product)) {
+              <div class="actions">
+                <a class="secondary" [routerLink]="['/admin/carta', product.id, 'editar']">
+                  Editar<span class="visually-hidden"> {{ product.name }}</span>
+                </a>
                 <a class="secondary" [routerLink]="['/admin/carta', product.id, 'variante']">
                   + Variante<span class="visually-hidden"> a {{ product.name }}</span>
                 </a>
-              }
+              </div>
             </li>
           }
         </ul>
@@ -191,8 +194,6 @@ export class MenuPage {
   private readonly all = computed(() => (this.products.hasValue() ? this.products.value() : []));
   protected readonly active = computed(() => this.all().filter((product) => product.active));
   protected readonly inactive = computed(() => this.all().filter((product) => !product.active));
-
-  protected readonly acceptsVariants = acceptsVariants;
 
   protected promoOf(product: AdminProductResponse): string | null {
     return promoLabel(product);

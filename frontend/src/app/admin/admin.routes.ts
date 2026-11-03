@@ -18,8 +18,18 @@ export const ADMIN_ROUTES: Routes = [
     loadComponent: () => import('./product-form-page').then((m) => m.ProductFormPage),
   },
   {
+    path: 'carta/:id/editar',
+    title: 'Editar producto · DRAMApp',
+    loadComponent: () => import('./product-form-page').then((m) => m.ProductFormPage),
+  },
+  {
     path: 'carta/:id/variante',
     title: 'Agregar variante · DRAMApp',
+    loadComponent: () => import('./variant-form-page').then((m) => m.VariantFormPage),
+  },
+  {
+    path: 'carta/:id/variante/:variantId',
+    title: 'Renombrar variante · DRAMApp',
     loadComponent: () => import('./variant-form-page').then((m) => m.VariantFormPage),
   },
 ];
