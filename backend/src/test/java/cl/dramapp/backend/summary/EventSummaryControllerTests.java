@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import cl.dramapp.backend.PostgresIntegrationTest;
 import cl.dramapp.backend.event.Event;
 import cl.dramapp.backend.event.EventRepository;
+import cl.dramapp.backend.product.CreateProductRequest;
 import cl.dramapp.backend.product.ProductRepository;
+import cl.dramapp.backend.product.ProductService;
 import cl.dramapp.backend.product.ProductVariant;
 import cl.dramapp.backend.refund.Refund;
 import cl.dramapp.backend.refund.RefundRepository;
@@ -51,6 +53,9 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private EntityManager entityManager;
+
+	@Autowired
+	private ProductService productService;
 
 	private Event event(String name) {
 		return eventRepository.saveAndFlush(new Event(name, LocalDate.of(2026, 10, 31)));
@@ -197,6 +202,25 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 			.containsExactly("Manzana", "Original");
 		assertThat(result).bodyJson().extractingPath("$.products[2].variants[*].units").asArray()
 			.containsExactly(2, 1);
+	}
+
+	/** DRAMA-29: a product added from ⚙️ Administración shows up in Totales like any other. */
+	@Test
+	void includesAProductAddedFromAdministracion() {
+		productService.create(new CreateProductRequest("Vaso de bebida", 3000L, null, null, null));
+		Event event = event("DRAMA Noviembre");
+		sale(event, PaymentMethod.EFECTIVO, 9000, 0, Map.of(variant("Vaso de bebida", "Única"), 3));
+		sale(event, PaymentMethod.EFECTIVO, 3000, 0, Map.of(variant("Agua 600cc", "Única"), 1));
+		entityManager.clear();
+
+		var result = summary(event.getId());
+
+		assertThat(result).bodyJson().extractingPath("$.products[*].productName").asArray()
+			.containsExactly("Vaso de bebida", "Agua 600cc");
+		assertThat(result).bodyJson().extractingPath("$.products[0].units").isEqualTo(3);
+		assertThat(result).bodyJson().extractingPath("$.products[0].variants[*].variantName").asArray()
+			.containsExactly("Única");
+		assertAmount(result, "$.overall.sold", 12000);
 	}
 
 	@Test

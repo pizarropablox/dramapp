@@ -378,6 +378,51 @@ class EventExportControllerTests extends PostgresIntegrationTest {
 		assertMoney(tequila, 9, 8000);
 	}
 
+	/**
+	 * DRAMA-29: a product added from ⚙️ Administración is not in the spreadsheet, so «Para BARRA» lists it after the
+	 * 14 rows, and it adds up everywhere else like any product. 3 Vaso de bebida (promo 2 × 5.000 + 3.000) and
+	 * 1 Agua 600cc (3.000).
+	 */
+	@Test
+	void aProductAddedFromAdministracionGoesAtTheEndOfParaBarra() throws IOException {
+		Event event = eventRepository.saveAndFlush(new Event("DRAMA Noviembre", LocalDate.of(2026, 11, 28)));
+		assertThat(mvc.post().uri("/api/products").contentType(MediaType.APPLICATION_JSON)
+			.content("""
+					{"name": "Vaso de bebida", "unitPrice": 3000, "promoQuantity": 2, "promoPrice": 5000}""")
+			.exchange()).hasStatus(HttpStatus.CREATED);
+		sell("""
+				{"paymentMethod": "EFECTIVO", "lines": [%s]}""".formatted(line(variant("Vaso de bebida", "Única"), 3)));
+		sell("""
+				{"paymentMethod": "MERCADO_PAGO", "lines": [%s]}""".formatted(line(variant("Agua 600cc", "Única"), 1)));
+		entityManager.flush();
+		entityManager.clear();
+
+		Map<String, List<Row>> sheets = read(export(event.getId()));
+
+		List<Row> barra = sheets.get("Para BARRA");
+		assertThat(labels(barra).stream().filter(label -> !label.isEmpty()).toList()).containsExactly("Producto",
+				"Piscola Alto", "Gin + Bebida", "Tropical Gin", "Tequila", "Ballantine", "Jack Daniels",
+				"Jack Daniels Manzana", "Piscola Mistral", "Jagger + Red Bull", "Jagger + Bebida", "Red Bull",
+				"Cerveza", "Cerveza 0,0", "Agua", "Vaso de bebida", "Total (control)");
+		assertBarra(rowStartingWith(barra, "Vaso de bebida"), 1, 2, 8000);
+		assertBarra(rowStartingWith(barra, "Agua"), 1, 0, 3000);
+		assertBarra(rowStartingWith(barra, "Total (control)"), 2, 2, 11000);
+		assertMoney(rowStartingWith(sheets.get("Resumen"), "Total"), 2, 11000);
+
+		List<Row> sales = sheets.get("Ventas");
+		assertThat(sales).hasSize(1 + 2);
+		assertMoney(sales.get(1), 3, 8000);
+
+		List<Row> lines = sheets.get("Detalle");
+		assertThat(lines).hasSize(1 + 2);
+		Row vaso = lines.get(1);
+		assertThat(vaso.getCellText(4) + "|" + vaso.getCellText(5)).isEqualTo("Vaso de bebida|");
+		assertCount(vaso, 6, 3);
+		assertMoney(vaso, 7, 3000);
+		assertCount(vaso, 8, 2);
+		assertMoney(vaso, 9, 5000);
+	}
+
 	@Test
 	void exportsAClosedEventToo() throws IOException {
 		Event event = eventWithSales();
