@@ -10,8 +10,9 @@ import { MenuNotice } from './menu-notice';
 import { isSingleVariant, promoLabel } from './menu-rules';
 
 /**
- * ⚙️ Administración > Carta: every product in menu order, deactivated ones apart at the end. Adding and editing
- * open their own screens; deactivated products are not edited. Deactivating (DRAMA-30) comes later.
+ * ⚙️ Administración > Carta: every product in menu order, deactivated ones apart at the end, with the deactivated
+ * variants of the active products. Adding, editing and reactivating open their own screens; deactivating starts in
+ * Editar producto. What is deactivated is not edited until it is reactivated.
  */
 @Component({
   selector: 'app-menu-page',
@@ -53,19 +54,50 @@ import { isSingleVariant, promoLabel } from './menu-rules';
             </li>
           }
         </ul>
-        @if (inactive().length > 0) {
+        @if (inactiveCount() > 0) {
           <details class="inactive">
-            <summary>Desactivados ({{ inactive().length }})</summary>
-            <ul class="products" aria-label="Productos desactivados">
-              @for (product of inactive(); track product.id) {
-                <li class="product off">
-                  <ng-container
-                    [ngTemplateOutlet]="card"
-                    [ngTemplateOutletContext]="{ $implicit: product }"
-                  />
-                </li>
-              }
-            </ul>
+            <summary>Desactivados ({{ inactiveCount() }})</summary>
+            @if (inactive().length > 0) {
+              <ul class="products" aria-label="Productos desactivados">
+                @for (product of inactive(); track product.id) {
+                  <li class="product off">
+                    <ng-container
+                      [ngTemplateOutlet]="card"
+                      [ngTemplateOutletContext]="{ $implicit: product }"
+                    />
+                    <a class="secondary" [routerLink]="['/admin/carta', product.id, 'reactivar']">
+                      Reactivar<span class="visually-hidden"> {{ product.name }}</span>
+                    </a>
+                  </li>
+                }
+              </ul>
+            }
+            @if (inactiveVariants().length > 0) {
+              <ul class="products" aria-label="Variantes desactivadas">
+                @for (item of inactiveVariants(); track item.variant.id) {
+                  <li class="product off">
+                    <p class="line">
+                      <strong class="name">{{ item.product.name }} {{ item.variant.name }}</strong>
+                      <span class="price">{{ item.product.unitPrice | clp }}</span>
+                    </p>
+                    <a
+                      class="secondary"
+                      [routerLink]="[
+                        '/admin/carta',
+                        item.product.id,
+                        'variante',
+                        item.variant.id,
+                        'reactivar',
+                      ]"
+                    >
+                      Reactivar<span class="visually-hidden">
+                        {{ item.product.name }} {{ item.variant.name }}</span
+                      >
+                    </a>
+                  </li>
+                }
+              </ul>
+            }
           </details>
         }
       }
@@ -172,6 +204,10 @@ import { isSingleVariant, promoLabel } from './menu-rules';
       margin-top: 1rem;
     }
 
+    .inactive .products + .products {
+      margin-top: 0.5rem;
+    }
+
     summary {
       display: flex;
       align-items: center;
@@ -194,6 +230,17 @@ export class MenuPage {
   private readonly all = computed(() => (this.products.hasValue() ? this.products.value() : []));
   protected readonly active = computed(() => this.all().filter((product) => product.active));
   protected readonly inactive = computed(() => this.all().filter((product) => !product.active));
+  /** Those of a deactivated product wait for it: it comes back with them as they were. */
+  protected readonly inactiveVariants = computed(() =>
+    this.active().flatMap((product) =>
+      product.variants
+        .filter((variant) => !variant.active)
+        .map((variant) => ({ product, variant })),
+    ),
+  );
+  protected readonly inactiveCount = computed(
+    () => this.inactive().length + this.inactiveVariants().length,
+  );
 
   protected promoOf(product: AdminProductResponse): string | null {
     return promoLabel(product);

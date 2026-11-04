@@ -64,4 +64,24 @@ public class ProductController {
 		return productService.renameVariant(id, variantId, request);
 	}
 
+	@PostMapping("/{id}/deactivate")
+	public AdminProductResponse deactivate(@PathVariable Long id) {
+		return productService.deactivateProduct(id);
+	}
+
+	@PostMapping("/{id}/reactivate")
+	public AdminProductResponse reactivate(@PathVariable Long id) {
+		return productService.reactivateProduct(id);
+	}
+
+	@PostMapping("/{id}/variants/{variantId}/deactivate")
+	public AdminProductResponse deactivateVariant(@PathVariable Long id, @PathVariable Long variantId) {
+		return productService.deactivateVariant(id, variantId);
+	}
+
+	@PostMapping("/{id}/variants/{variantId}/reactivate")
+	public AdminProductResponse reactivateVariant(@PathVariable Long id, @PathVariable Long variantId) {
+		return productService.reactivateVariant(id, variantId);
+	}
+
 }

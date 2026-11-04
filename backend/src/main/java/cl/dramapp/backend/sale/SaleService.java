@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import cl.dramapp.backend.event.Event;
 import cl.dramapp.backend.event.EventRepository;
 import cl.dramapp.backend.event.EventStatus;
+import cl.dramapp.backend.product.MenuRules;
 import cl.dramapp.backend.product.Product;
 import cl.dramapp.backend.product.ProductVariant;
 import cl.dramapp.backend.product.ProductVariantRepository;
@@ -102,14 +103,16 @@ public class SaleService {
 		if (variant == null) {
 			throw new InvalidSaleException("La variante " + variantId + " no existe.");
 		}
-		if (!variant.isActive()) {
-			throw new InvalidSaleException("La variante " + variantId + " (" + variant.getName() + ") está inactiva.");
-		}
-		Product product = variant.getProduct();
-		if (!product.isActive()) {
-			throw new InvalidSaleException("El producto " + product.getName() + " está inactivo.");
+		if (!variant.isActive() || !variant.getProduct().isActive()) {
+			throw new InvalidSaleException("«" + menuName(variant) + "» ya no está en la carta.");
 		}
 		return variant;
+	}
+
+	/** "Jack Daniels Honey", or just "Piscola" for a product without real variants. */
+	private static String menuName(ProductVariant variant) {
+		String productName = variant.getProduct().getName();
+		return MenuRules.isSingleVariant(variant.getName()) ? productName : productName + " " + variant.getName();
 	}
 
 	private static PriceCalculator.ProductPrice priceOf(ProductVariant variant) {

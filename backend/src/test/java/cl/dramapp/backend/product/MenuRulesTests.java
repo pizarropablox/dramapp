@@ -2,6 +2,7 @@ package cl.dramapp.backend.product;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Arrays;
 import java.util.List;
@@ -131,6 +132,25 @@ class MenuRulesTests {
 		assertThatNoException().isThrownBy(() -> MenuRules.checkSingleVariantAlone("Coca", 2));
 		assertThat(detail(() -> MenuRules.checkSingleVariantAlone(" única ", 1)))
 			.isEqualTo("«Única» es solo para productos sin variantes: no se mezcla con otras.");
+	}
+
+	@Test
+	void aProductKeepsOneActiveVariant() {
+		Product jack = new Product("Jack Daniels", 8500, 1);
+		ProductVariant original = jack.addVariant("Original", 1);
+		ProductVariant manzana = jack.addVariant("Manzana", 2);
+		ProductVariant honey = jack.addVariant("Honey", 3);
+		honey.deactivate();
+
+		assertThatNoException().isThrownBy(() -> MenuRules.checkNotLastActiveVariant(jack));
+
+		manzana.deactivate();
+
+		assertThatThrownBy(() -> MenuRules.checkNotLastActiveVariant(jack))
+			.isInstanceOf(CannotDeactivateException.class)
+			.satisfies(ex -> assertThat(((CannotDeactivateException) ex).getBody().getDetail())
+				.isEqualTo("Es la última variante activa de «Jack Daniels»: desactiva el producto."));
+		assertThat(original.isActive()).isTrue();
 	}
 
 	@Test

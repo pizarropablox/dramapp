@@ -1,9 +1,9 @@
 import { afterNextRender, Component, ElementRef, input, output, viewChild } from '@angular/core';
 
 /**
- * The last step before adding something to the menu, which cannot be deleted afterwards, or editing it: what
- * will be saved (projected), the warning, and "Volver" / "Sí, agregar". The title takes the focus, so a screen
- * reader starts here.
+ * The last step before adding something to the menu, which cannot be deleted afterwards, editing it, deactivating
+ * it or reactivating it: what will be saved (projected), the warning, and "Volver" / "Sí, agregar". The title takes
+ * the focus, so a screen reader starts here.
  */
 @Component({
   selector: 'app-confirm-step',

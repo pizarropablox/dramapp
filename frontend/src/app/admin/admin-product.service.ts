@@ -48,4 +48,30 @@ export class AdminProductService {
       request,
     );
   }
+
+  /** Never with an open event (409). Its variants are not touched. Answers the whole product. */
+  deactivate(productId: number): Observable<AdminProductResponse> {
+    return this.http.post<AdminProductResponse>(`/api/products/${productId}/deactivate`, null);
+  }
+
+  /** Back to its place in the Venta grid. Answers the whole product. */
+  reactivate(productId: number): Observable<AdminProductResponse> {
+    return this.http.post<AdminProductResponse>(`/api/products/${productId}/reactivate`, null);
+  }
+
+  /** Never with an open event, nor the last active variant (409). Answers the whole product. */
+  deactivateVariant(productId: number, variantId: number): Observable<AdminProductResponse> {
+    return this.http.post<AdminProductResponse>(
+      `/api/products/${productId}/variants/${variantId}/deactivate`,
+      null,
+    );
+  }
+
+  /** Answers the whole product. */
+  reactivateVariant(productId: number, variantId: number): Observable<AdminProductResponse> {
+    return this.http.post<AdminProductResponse>(
+      `/api/products/${productId}/variants/${variantId}/reactivate`,
+      null,
+    );
+  }
 }

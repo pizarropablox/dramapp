@@ -34,6 +34,10 @@ describe('admin routes', () => {
     '/admin/carta/9/editar',
     '/admin/carta/9/variante',
     '/admin/carta/9/variante/92',
+    '/admin/carta/9/desactivar',
+    '/admin/carta/9/reactivar',
+    '/admin/carta/9/variante/92/desactivar',
+    '/admin/carta/9/variante/93/reactivar',
   ];
 
   for (const url of ADMIN_URLS) {

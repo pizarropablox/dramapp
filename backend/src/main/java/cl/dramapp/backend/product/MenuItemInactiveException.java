@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.ErrorResponseException;
 
-/** Deactivated products and variants are not edited: they must be reactivated first (DRAMA-30). */
+/** Deactivated products and variants are not edited, nor the variants of a deactivated product: reactivate it first. */
 public class MenuItemInactiveException extends ErrorResponseException {
 
 	private MenuItemInactiveException(String detail) {

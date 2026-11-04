@@ -155,7 +155,7 @@ Hay dos usuarios fijos, compartidos por quienes cumplen ese rol:
 | Usuario | Puede |
 |---|---|
 | `barra` | vender, anular, ver últimas ventas y totales |
-| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, agregar y editar productos y variantes de la carta (**⚙️ Administración**) y **Estado del sistema** |
+| `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, agregar, editar, desactivar y reactivar productos y variantes de la carta (**⚙️ Administración**) y **Estado del sistema** |
 
 Ninguna clave ni hash vive en el repositorio: solo en las variables de Render.
 
@@ -276,9 +276,9 @@ En Para BARRA, cuando una promo mezcla variantes (1 Jack Original + 1 Jack Manza
 
 **En el teléfono:** en Android (Chrome) el archivo queda en Descargas. En iPhone el botón cambia a **Guardar Excel** y un segundo toque abre la hoja de compartir: «Guardar en Archivos», WhatsApp o Mail. Compartir necesita HTTPS, así que en la red local (http) el iPhone intenta una descarga normal.
 
-### Agregar y editar la carta (admin)
+### Administrar la carta (admin)
 
-En **Totales**, `admin` tiene **⚙️** arriba a la derecha → **Administración → Carta** (barra no lo ve y el backend le responde 403). La lista muestra los productos en el orden de la grilla de Venta, con precio, promo y variantes; los desactivados van aparte al final.
+En **Totales**, `admin` tiene **⚙️** arriba a la derecha → **Administración → Carta** (barra no lo ve y el backend le responde 403). La lista muestra los productos en el orden de la grilla de Venta, con precio, promo y variantes; los productos desactivados y las variantes desactivadas van aparte al final, en **Desactivados**.
 
 - **+ Agregar producto:** nombre, precio, promo opcional (vasos y precio, que debe ser menor que esos vasos a precio normal) y variantes opcionales. Mismo precio = variante; otro precio = otro producto. Sin variantes, se vende con un solo toque.
 - **+ Variante:** en cualquier producto activo. En uno sin variantes (Red Bull), la primera reemplaza a «Única»: esa fila cambia de nombre, así que sus ventas pasadas se ven con la variante nueva.
@@ -291,6 +291,18 @@ El producto nuevo queda al final de la grilla. Los otros teléfonos ven los camb
 **Precios con el evento abierto.** Se pueden cambiar. Las ventas ya hechas conservan su precio, y la venta se registra siempre al precio actual del backend: la cajera digita en la Point el **Cobrar $X** que aparece después de **Confirmar venta**. Un teléfono que aún no recargó la carta puede mostrar el total anterior en el carrito hasta ese momento. Al recargarla, el carrito toma los precios nuevos y, si cambió el total, lo avisa.
 
 **Renombrar cambia el historial.** Las líneas de venta guardan el precio, no el nombre: el nombre nuevo se ve también en ventas pasadas y eventos cerrados (Totales, Últimas ventas y las hojas Para BARRA y Detalle del Excel). Si el producto o la variante tiene fila propia en «Para BARRA», esa fila queda en 0 y sus ventas pasan al final, hasta actualizar el mapeo en `BarraRows`. Los montos no cambian y «Total (control)» sigue cuadrando. Para vender otra cosa, crea un producto nuevo en vez de renombrar.
+
+**Desactivar es para antes de la fiesta.** Se usa cuando ya se sabe qué llega de la concesión. Nada se borra: las ventas hechas, Totales y el Excel no cambian.
+
+- **Desactivar producto** está al final de **Editar**, y **Desactivar** cada variante está en la lista de variantes de esa pantalla. Con cambios sin guardar quedan bloqueados.
+- Con un evento abierto no se puede: aparece deshabilitado con «Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.», y el backend responde 409.
+- La última variante activa no se desactiva: hay que desactivar el producto. Un producto sin variantes solo tiene **Desactivar producto**.
+- **Reactivar** está en **Desactivados**, y para las variantes también en **Editar**. Se puede con el evento abierto. Lo reactivado vuelve a su lugar en la grilla con el precio que tenía.
+- Producto y variantes son independientes: al reactivar Jack Daniels, Honey sigue desactivada si lo estaba. Las variantes de un producto desactivado esperan a que se reactive.
+- Lo desactivado no se edita hasta reactivarlo.
+- Desactivar un producto corre un lugar los botones siguientes de la grilla.
+
+Si un teléfono intenta vender algo que ya no está en la carta, la venta no se registra y la cajera ve ««Jack Daniels Honey» ya no está en la carta.». El carrito no cambia: lo quita con **−**.
 
 ### Límites del plan gratis
 

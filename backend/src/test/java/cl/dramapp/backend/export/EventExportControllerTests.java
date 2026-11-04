@@ -527,6 +527,44 @@ class EventExportControllerTests extends PostgresIntegrationTest {
 	}
 
 	@Test
+	void deactivatingWhatWasSoldChangesNothingInAClosedEvent() throws IOException {
+		Event event = eventWithSales();
+		assertThat(mvc.post().uri("/api/events/{id}/close", event.getId()).exchange()).hasStatusOk();
+		entityManager.flush();
+		entityManager.clear();
+		Map<String, List<Row>> before = read(export(event.getId()));
+
+		long jack = variant("Jack Daniels", "Original").getProduct().getId();
+		long manzana = variant("Jack Daniels", "Manzana").getId();
+		long cerveza = variant("Cerveza", "Normal").getProduct().getId();
+		long cervezaCero = variant("Cerveza", "0,0").getId();
+		long tequila = variant("Tequila", "Única").getProduct().getId();
+		assertThat(mvc.post().uri("/api/products/{id}/variants/{variantId}/deactivate", jack, manzana).exchange())
+			.hasStatusOk();
+		assertThat(mvc.post().uri("/api/products/{id}/variants/{variantId}/deactivate", cerveza, cervezaCero)
+			.exchange()).hasStatusOk();
+		assertThat(mvc.post().uri("/api/products/{id}/deactivate", tequila).exchange()).hasStatusOk();
+		entityManager.flush();
+		entityManager.clear();
+
+		Map<String, List<Row>> after = read(export(event.getId()));
+
+		assertThat(after.keySet()).containsExactlyElementsOf(before.keySet());
+		before.forEach((sheet, rows) -> assertThat(texts(after.get(sheet))).as(sheet).isEqualTo(texts(rows)));
+		assertBarra(rowStartingWith(after.get("Para BARRA"), "Tequila"), 1, 3, 11000);
+		assertBarra(rowStartingWith(after.get("Para BARRA"), "Jack Daniels Manzana"), 0, 1, 7500);
+		assertBarra(rowStartingWith(after.get("Para BARRA"), "Cerveza 0,0"), 1, 0, 3000);
+	}
+
+	/** Every cell as text, but the time of the download, which is the only thing allowed to differ. */
+	private static List<List<String>> texts(List<Row> rows) {
+		return rows.stream()
+			.map(row -> row.stream().map(cell -> cell == null ? "" : cell.getText()).toList())
+			.filter(cells -> cells.isEmpty() || !"Descargado".equals(cells.getFirst()))
+			.toList();
+	}
+
+	@Test
 	void answers404ForAnUnknownEvent() {
 		var result = export(999999999);
 

@@ -44,6 +44,14 @@ public class ProductVariant {
 		this.name = name;
 	}
 
+	void deactivate() {
+		this.active = false;
+	}
+
+	void reactivate() {
+		this.active = true;
+	}
+
 	public Long getId() {
 		return id;
 	}

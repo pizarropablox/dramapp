@@ -12,6 +12,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import cl.dramapp.backend.event.EventRepository;
+import cl.dramapp.backend.event.EventStatus;
+
 @Service
 public class ProductService {
 
@@ -19,9 +22,13 @@ public class ProductService {
 
 	private final ProductVariantRepository productVariantRepository;
 
-	public ProductService(ProductRepository productRepository, ProductVariantRepository productVariantRepository) {
+	private final EventRepository eventRepository;
+
+	public ProductService(ProductRepository productRepository, ProductVariantRepository productVariantRepository,
+			EventRepository eventRepository) {
 		this.productRepository = productRepository;
 		this.productVariantRepository = productVariantRepository;
+		this.eventRepository = eventRepository;
 	}
 
 	/**
@@ -125,10 +132,7 @@ public class ProductService {
 	@Transactional
 	public AdminProductResponse renameVariant(Long productId, Long variantId, UpdateVariantRequest request) {
 		Product product = findProduct(productId);
-		ProductVariant variant = product.getVariants().stream()
-			.filter(candidate -> candidate.getId().equals(variantId))
-			.findFirst()
-			.orElseThrow(() -> new VariantNotFoundException(product, variantId));
+		ProductVariant variant = findVariant(product, variantId);
 		String name = MenuRules.variantName(request.name());
 		if (!product.isActive()) {
 			throw MenuItemInactiveException.of(product);
@@ -143,8 +147,80 @@ public class ProductService {
 		return saveWithVariantName(product);
 	}
 
+	/**
+	 * Takes a product out of the menu, before the party: never with an open event. Nothing is deleted, its variants
+	 * are not touched and it keeps its place, so past sales, Totales and the Excel stay as they are. Repeating it
+	 * changes nothing.
+	 */
+	@Transactional
+	public AdminProductResponse deactivateProduct(Long productId) {
+		Product product = findProductForUpdate(productId);
+		if (product.isActive()) {
+			checkNoOpenEvent();
+			product.deactivate();
+		}
+		return AdminProductResponse.from(productRepository.saveAndFlush(product));
+	}
+
+	/** Back to its place in the Venta grid with the variants it had, also with an open event, like adding one. */
+	@Transactional
+	public AdminProductResponse reactivateProduct(Long productId) {
+		Product product = findProductForUpdate(productId);
+		product.reactivate();
+		return AdminProductResponse.from(productRepository.saveAndFlush(product));
+	}
+
+	/**
+	 * Takes a variant of an active product out of the menu, never with an open event. Its product keeps at least one
+	 * active variant. Repeating it changes nothing.
+	 */
+	@Transactional
+	public AdminProductResponse deactivateVariant(Long productId, Long variantId) {
+		Product product = findProductForUpdate(productId);
+		ProductVariant variant = findVariant(product, variantId);
+		if (!product.isActive()) {
+			throw MenuItemInactiveException.of(product);
+		}
+		if (variant.isActive()) {
+			checkNoOpenEvent();
+			MenuRules.checkNotLastActiveVariant(product);
+			variant.deactivate();
+		}
+		return AdminProductResponse.from(productRepository.saveAndFlush(product));
+	}
+
+	/** A variant of an active product, also with an open event. Repeating it changes nothing. */
+	@Transactional
+	public AdminProductResponse reactivateVariant(Long productId, Long variantId) {
+		Product product = findProductForUpdate(productId);
+		ProductVariant variant = findVariant(product, variantId);
+		if (!product.isActive()) {
+			throw MenuItemInactiveException.of(product);
+		}
+		variant.reactivate();
+		return AdminProductResponse.from(productRepository.saveAndFlush(product));
+	}
+
+	private void checkNoOpenEvent() {
+		if (eventRepository.findByStatus(EventStatus.OPEN).isPresent()) {
+			throw CannotDeactivateException.eventOpen();
+		}
+	}
+
 	private Product findProduct(Long productId) {
 		return productRepository.findById(productId).orElseThrow(() -> new ProductNotFoundException(productId));
+	}
+
+	private Product findProductForUpdate(Long productId) {
+		return productRepository.findByIdForUpdate(productId)
+			.orElseThrow(() -> new ProductNotFoundException(productId));
+	}
+
+	private static ProductVariant findVariant(Product product, Long variantId) {
+		return product.getVariants().stream()
+			.filter(candidate -> candidate.getId().equals(variantId))
+			.findFirst()
+			.orElseThrow(() -> new VariantNotFoundException(product, variantId));
 	}
 
 	/** Against every product, deactivated ones included, except the one being edited (null: none). */

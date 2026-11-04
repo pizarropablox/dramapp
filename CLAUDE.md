@@ -50,10 +50,20 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 ## Edición de la carta (DRAMA-28)
 
 - `sale_line` guarda `variant_id` y los precios, no los nombres: renombrar cambia cómo se ven las ventas pasadas, también en eventos cerrados. Los montos no cambian.
-- Lo desactivado no se edita (409) hasta DRAMA-30. «Única» solo vale como variante sin otras al lado, contando las desactivadas.
+- Lo desactivado no se edita (409) hasta reactivarlo. «Única» solo vale como variante sin otras al lado, contando las desactivadas.
 - La primera variante de un producto con solo «Única» renombra esa fila y conserva su id.
 - La venta se cobra al precio actual del backend: la cajera digita en la Point el «Cobrar $X» que aparece después de confirmar. `POST /api/sales` no recibe el total del teléfono.
 - La carta se recarga al entrar a Venta y al volver a primer plano, nunca con una venta enviándose o pendiente. `SalePage` llama a `CartStore.syncMenu` con cada carta; las líneas que faltan no se borran.
+
+## Desactivar la carta (DRAMA-30)
+
+- Desactivar es para antes de la fiesta. Con un evento abierto responde 409, y la pantalla lo muestra deshabilitado con el mismo texto; lo que se acaba en la noche se marca «Sin stock» (DRAMA-51). Reactivar sí se permite.
+- Las acciones son `POST /api/products/{id}/deactivate|reactivate` y `.../variants/{variantId}/deactivate|reactivate`, sin body. Repetirlas responde 200 sin cambiar nada.
+- Producto y variantes son independientes: desactivar un producto no toca `variant.active`. Las variantes de un producto desactivado responden 409 hasta reactivarlo.
+- Un producto activo conserva al menos una variante activa (409 si no), con el producto bloqueado por `findByIdForUpdate`.
+- Se conserva `sort_order`: lo reactivado vuelve a su lugar. Totales y el Excel no filtran por `active`; no agregar ese filtro.
+- Vender algo desactivado responde 400, nunca 409: el frontend lee el 409 de `POST /api/sales` como «evento cerrado».
+- `ProductFormPage` y `MenuStatusPage` piden el evento a `EventService`: `CurrentEventStore` solo se mantiene al día en Venta.
 
 ## PWA (DRAMA-32)
 

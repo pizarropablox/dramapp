@@ -47,6 +47,33 @@ describe('AdminProductService', () => {
     request.flush(VASO);
   });
 
+  it('deactivates and reactivates a product with POST and no body', () => {
+    service.deactivate(20).subscribe();
+    service.reactivate(20).subscribe();
+
+    for (const url of ['/api/products/20/deactivate', '/api/products/20/reactivate']) {
+      const request = httpTesting.expectOne(url);
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toBeNull();
+      request.flush(VASO);
+    }
+  });
+
+  it('deactivates and reactivates a variant with POST and no body', () => {
+    service.deactivateVariant(20, 200).subscribe();
+    service.reactivateVariant(20, 200).subscribe();
+
+    for (const url of [
+      '/api/products/20/variants/200/deactivate',
+      '/api/products/20/variants/200/reactivate',
+    ]) {
+      const request = httpTesting.expectOne(url);
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toBeNull();
+      request.flush(VASO);
+    }
+  });
+
   it('lists every product from /api/products/all', () => {
     let products: AdminProductResponse[] | undefined;
     service.getAll().subscribe((value) => (products = value));

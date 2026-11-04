@@ -32,4 +32,28 @@ export const ADMIN_ROUTES: Routes = [
     title: 'Renombrar variante · DRAMApp',
     loadComponent: () => import('./variant-form-page').then((m) => m.VariantFormPage),
   },
+  {
+    path: 'carta/:id/desactivar',
+    title: 'Desactivar producto · DRAMApp',
+    data: { action: 'deactivate' },
+    loadComponent: () => import('./menu-status-page').then((m) => m.MenuStatusPage),
+  },
+  {
+    path: 'carta/:id/reactivar',
+    title: 'Reactivar producto · DRAMApp',
+    data: { action: 'reactivate' },
+    loadComponent: () => import('./menu-status-page').then((m) => m.MenuStatusPage),
+  },
+  {
+    path: 'carta/:id/variante/:variantId/desactivar',
+    title: 'Desactivar variante · DRAMApp',
+    data: { action: 'deactivate' },
+    loadComponent: () => import('./menu-status-page').then((m) => m.MenuStatusPage),
+  },
+  {
+    path: 'carta/:id/variante/:variantId/reactivar',
+    title: 'Reactivar variante · DRAMApp',
+    data: { action: 'reactivate' },
+    loadComponent: () => import('./menu-status-page').then((m) => m.MenuStatusPage),
+  },
 ];

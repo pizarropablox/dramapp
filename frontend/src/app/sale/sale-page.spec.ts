@@ -771,6 +771,28 @@ describe('SalePage', () => {
       expect(root().querySelector('[role="alertdialog"]')).toBeNull();
     });
 
+    it('shows a 400 as it comes and keeps the cart, without asking for the menu again', async () => {
+      await setup();
+      await tap(productButton('Red Bull'));
+      await tap(button('Efectivo'));
+
+      confirmButton().click();
+      TestBed.tick();
+      httpTesting
+        .expectOne('/api/sales')
+        .flush(
+          { status: 400, detail: '«Jack Daniels Honey» ya no está en la carta.' },
+          { status: 400, statusText: 'Bad Request' },
+        );
+      await fixture.whenStable();
+
+      expect(root().querySelector('.checkout [role="alert"]')?.textContent).toContain(
+        '«Jack Daniels Honey» ya no está en la carta.',
+      );
+      expect(cartLabels()).toEqual(['Red Bull']);
+      httpTesting.expectNone('/api/products');
+    });
+
     it('says the event was closed on 409, keeps the cart and rechecks the event', async () => {
       await setup();
       await tap(productButton('Red Bull'));
