@@ -234,7 +234,7 @@ class SaleControllerTests extends PostgresIntegrationTest {
 				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(honey.getId()));
 
 		assertBadRequest(result);
-		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("Honey", "inactiva");
+		assertThat(result).bodyJson().extractingPath("$.detail").isEqualTo("«Jack Daniels Honey» ya no está en la carta.");
 	}
 
 	@Test
@@ -246,7 +246,7 @@ class SaleControllerTests extends PostgresIntegrationTest {
 				{"paymentMethod": "EFECTIVO", "lines": [{"variantId": %d, "quantity": 1}]}""".formatted(piscola.getId()));
 
 		assertBadRequest(result);
-		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("Piscola", "inactivo");
+		assertThat(result).bodyJson().extractingPath("$.detail").isEqualTo("«Piscola» ya no está en la carta.");
 	}
 
 	@Test
@@ -486,6 +486,23 @@ class SaleControllerTests extends PostgresIntegrationTest {
 		assertThat(result).bodyJson().extractingPath("$.voidReason").isEqualTo("monto mal digitado");
 		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(8000);
 		assertThat(result).bodyJson().extractingPath("$.paymentMethod").isEqualTo("EFECTIVO");
+		assertThat(result).bodyJson().extractingPath("$.lines[0].productName").isEqualTo("Red Bull");
+	}
+
+	/** Deactivating needs no open event, but such a sale can exist (a product taken out directly in the database). */
+	@Test
+	void aSaleOfSomethingNoLongerOnTheMenuCanBeVoided() {
+		Event event = openEvent();
+		ProductVariant redBull = variant("Red Bull", "Única");
+		Sale sale = saleIn(event, PaymentMethod.EFECTIVO, 7000, 0, redBull, 2);
+		entityManager.createNativeQuery("update product set active = false where id = :id")
+			.setParameter("id", redBull.getProduct().getId())
+			.executeUpdate();
+		entityManager.clear();
+
+		var result = voidSale(sale.getId(), null);
+
+		assertThat(result).hasStatus(HttpStatus.OK);
 		assertThat(result).bodyJson().extractingPath("$.lines[0].productName").isEqualTo("Red Bull");
 	}
 
