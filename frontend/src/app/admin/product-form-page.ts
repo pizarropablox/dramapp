@@ -24,6 +24,7 @@ import {
 } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
 import { ProductGrid } from '../sale/product-grid';
+import { EventService } from '../event/event.service';
 import { errorMessage } from '../shared/api-error';
 import { ClpPipe, formatClp } from '../shared/clp';
 import { AdminProductResponse, CreateProductRequest } from './admin-product';
@@ -31,6 +32,8 @@ import { AdminProductService } from './admin-product.service';
 import { ConfirmStep } from './confirm-step';
 import { MenuNotice } from './menu-notice';
 import {
+  EVENT_OPEN_MESSAGE,
+  isLastActiveVariant,
   isSingleVariant,
   MIN_PROMO_QUANTITY,
   nameError,
@@ -85,8 +88,8 @@ function invalid(message: string | null): ValidationError | null {
 /**
  * Adds a product, or edits one (/admin/carta/:id/editar): the form, then a confirmation with the button as Venta
  * will show it and, when editing, only what changed. Same price = variant, other price = another product. The
- * variants of an edited product have their own screens. The backend checks everything again; a name taken in the
- * meantime (409) comes back under the name.
+ * variants of an edited product have their own screens, and so has deactivating, which waits for the event to close.
+ * The backend checks everything again; a name taken in the meantime (409) comes back under the name.
  */
 @Component({
   selector: 'app-product-form-page',
@@ -201,6 +204,59 @@ function invalid(message: string | null): ValidationError | null {
                     <li>
                       @if (variant.active) {
                         <span class="variant-name">{{ variant.name }}</span>
+                        <span class="variant-actions">
+                          @if (hasUnsavedChanges()) {
+                            <button
+                              type="button"
+                              class="secondary"
+                              disabled
+                              aria-describedby="variants-locked"
+                            >
+                              Renombrar<span class="visually-hidden"> {{ variant.name }}</span>
+                            </button>
+                          } @else {
+                            <a
+                              class="secondary"
+                              [routerLink]="['/admin/carta', current.id, 'variante', variant.id]"
+                            >
+                              Renombrar<span class="visually-hidden"> {{ variant.name }}</span>
+                            </a>
+                          }
+                          @if (!isLast(current, variant)) {
+                            @if (deactivateLocked()) {
+                              <button
+                                type="button"
+                                class="secondary"
+                                disabled
+                                [attr.aria-describedby]="
+                                  eventOpen() ? 'variants-event-open' : 'variants-locked'
+                                "
+                              >
+                                Desactivar<span class="visually-hidden"> {{ variant.name }}</span>
+                              </button>
+                            } @else {
+                              <a
+                                class="secondary"
+                                [routerLink]="[
+                                  '/admin/carta',
+                                  current.id,
+                                  'variante',
+                                  variant.id,
+                                  'desactivar',
+                                ]"
+                              >
+                                Desactivar<span class="visually-hidden"> {{ variant.name }}</span>
+                              </a>
+                            }
+                          }
+                        </span>
+                        @if (isLast(current, variant)) {
+                          <p class="hint">
+                            Es la última activa: para sacarla, desactiva el producto.
+                          </p>
+                        }
+                      } @else {
+                        <span class="variant-name off">{{ variant.name }} (desactivada)</span>
                         @if (hasUnsavedChanges()) {
                           <button
                             type="button"
@@ -208,22 +264,29 @@ function invalid(message: string | null): ValidationError | null {
                             disabled
                             aria-describedby="variants-locked"
                           >
-                            Renombrar<span class="visually-hidden"> {{ variant.name }}</span>
+                            Reactivar<span class="visually-hidden"> {{ variant.name }}</span>
                           </button>
                         } @else {
                           <a
                             class="secondary"
-                            [routerLink]="['/admin/carta', current.id, 'variante', variant.id]"
+                            [routerLink]="[
+                              '/admin/carta',
+                              current.id,
+                              'variante',
+                              variant.id,
+                              'reactivar',
+                            ]"
                           >
-                            Renombrar<span class="visually-hidden"> {{ variant.name }}</span>
+                            Reactivar<span class="visually-hidden"> {{ variant.name }}</span>
                           </a>
                         }
-                      } @else {
-                        <span class="variant-name off">{{ variant.name }} (desactivada)</span>
                       }
                     </li>
                   }
                 </ul>
+                @if (eventOpen()) {
+                  <p id="variants-event-open" class="hint">{{ eventOpenMessage }}</p>
+                }
               } @else {
                 <p class="hint">Sin variantes: se vende con un solo toque.</p>
               }
@@ -289,6 +352,26 @@ function invalid(message: string | null): ValidationError | null {
             <a class="secondary" routerLink="/admin/carta">Cancelar</a>
             <button type="submit" class="primary">Revisar</button>
           </div>
+
+          @if (original(); as current) {
+            <div class="deactivate">
+              @if (deactivateLocked(); as reason) {
+                <button
+                  type="button"
+                  class="secondary"
+                  disabled
+                  aria-describedby="deactivate-locked"
+                >
+                  Desactivar producto
+                </button>
+                <p id="deactivate-locked" class="hint">{{ reason }}</p>
+              } @else {
+                <a class="secondary" [routerLink]="['/admin/carta', current.id, 'desactivar']">
+                  Desactivar producto
+                </a>
+              }
+            </div>
+          }
         </form>
       } @else {
         <app-confirm-step
@@ -455,6 +538,20 @@ function invalid(message: string | null): ValidationError | null {
       font-weight: 400;
     }
 
+    .variant-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .deactivate {
+      display: grid;
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+
     .back-to-menu {
       width: 100%;
       margin-top: 0.75rem;
@@ -505,6 +602,7 @@ function invalid(message: string | null): ValidationError | null {
 })
 export class ProductFormPage {
   private readonly adminProducts = inject(AdminProductService);
+  private readonly events = inject(EventService);
   private readonly menuNotice = inject(MenuNotice);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -525,6 +623,14 @@ export class ProductFormPage {
   );
 
   protected readonly editing = computed(() => this.id() !== undefined);
+  /** Asked here, not in CurrentEventStore: only Venta keeps that one up to date. If it fails, the backend checks. */
+  private readonly openEvent = rxResource({
+    params: () => (this.editing() ? true : undefined),
+    stream: () => this.events.current(),
+  });
+  protected readonly eventOpen = computed(
+    () => this.openEvent.hasValue() && this.openEvent.value() !== null,
+  );
   protected readonly original = computed<AdminProductResponse | null>(() => {
     const id = Number(this.id());
     return this.products().find((product) => product.id === id) ?? null;
@@ -544,6 +650,8 @@ export class ProductFormPage {
   protected readonly minPromoQuantity = MIN_PROMO_QUANTITY;
   protected readonly noChangesMessage = NO_CHANGES_MESSAGE;
   protected readonly variantsLockedMessage = VARIANTS_LOCKED_MESSAGE;
+  protected readonly eventOpenMessage = EVENT_OPEN_MESSAGE;
+  protected readonly isLast = isLastActiveVariant;
   protected readonly step = signal<'form' | 'confirm'>('form');
   protected readonly submitting = signal(false);
   protected readonly saveError = signal<string | null>(null);
@@ -620,6 +728,14 @@ export class ProductFormPage {
       !!original &&
       (this.changes().length > 0 || this.model().hasPromo !== (promoLabel(original) !== null))
     );
+  });
+
+  /** Why nothing can be deactivated right now, if so. */
+  protected readonly deactivateLocked = computed(() => {
+    if (this.eventOpen()) {
+      return EVENT_OPEN_MESSAGE;
+    }
+    return this.hasUnsavedChanges() ? VARIANTS_LOCKED_MESSAGE : null;
   });
 
   protected readonly warning = computed(() => {

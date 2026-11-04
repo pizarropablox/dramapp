@@ -1,7 +1,7 @@
 import { ProductResponse } from '../product/product';
 import { SINGLE_VARIANT_NAME } from '../sale/sale-format';
 import { formatClp } from '../shared/clp';
-import { AdminProductResponse } from './admin-product';
+import { AdminProductResponse, AdminVariantResponse } from './admin-product';
 
 // The backend's MenuRules, repeated so the form warns before sending. The backend has the last word: its
 // messages are the same, so a 400 or 409 reads like these.
@@ -19,6 +19,21 @@ export const NO_CHANGES_MESSAGE = 'No cambiaste nada.';
 /** Names are not stored with the sales, and «Para BARRA» finds its rows by name. */
 export const RENAME_WARNING =
   'El nombre nuevo también se verá en ventas pasadas y eventos cerrados. Si tiene fila propia en «Para BARRA», sus ventas saldrán al final del Excel.';
+
+/** The backend's 409: what runs out during the night is marked «Sin stock» instead. */
+export const EVENT_OPEN_MESSAGE =
+  'Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.';
+
+export const DEACTIVATE_WARNING =
+  'Sale de Venta y los botones siguientes se corren un lugar. Las ventas hechas, Totales y el Excel no cambian.';
+
+/** A variant moves no button of the grid: it only leaves the picker. */
+export function deactivateVariantWarning(productName: string): string {
+  return `Sale del selector de variantes de «${productName}». Las ventas hechas, Totales y el Excel no cambian.`;
+}
+
+export const REACTIVATE_WARNING =
+  'Vuelve a su lugar en Venta con este precio. Si cambió, edítalo después de reactivar.';
 
 const SINGLE_VARIANT_MIXED_MESSAGE = `«${SINGLE_VARIANT_NAME}» es solo para productos sin variantes: no se mezcla con otras.`;
 
@@ -144,6 +159,18 @@ export function isSingleVariant(name: string): boolean {
 /** A product without real variants: its first variant takes the place of "Única". */
 export function hasOnlySingleVariant(product: AdminProductResponse): boolean {
   return product.variants.length === 1 && isSingleVariant(product.variants[0].name);
+}
+
+/** A product keeps a variant to sell: this one cannot be deactivated. */
+export function isLastActiveVariant(
+  product: AdminProductResponse,
+  variant: AdminVariantResponse,
+): boolean {
+  return variant.active && product.variants.filter((other) => other.active).length === 1;
+}
+
+export function lastActiveVariantError(product: AdminProductResponse): string {
+  return `Es la última variante activa de «${product.name}»: desactiva el producto.`;
 }
 
 /** "3 × $12.000", or null without promo. */

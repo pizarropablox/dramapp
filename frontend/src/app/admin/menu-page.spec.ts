@@ -74,16 +74,48 @@ describe('MenuPage', () => {
     expect(activeCards()[2].querySelector('a')?.textContent?.trim()).toBe('Editar Red Bull');
   });
 
-  it('keeps the deactivated products apart, at the end, without actions', async () => {
+  it('keeps the deactivated products apart, at the end, with "Reactivar"', async () => {
     await render();
 
     const inactive = root().querySelector('details.inactive')!;
-    expect(inactive.querySelector('summary')?.textContent).toBe('Desactivados (1)');
-    expect(inactive.querySelector('.name')?.textContent).toBe('Piscola');
-    expect(inactive.querySelector('a')).toBeNull();
+    const products = inactive.querySelector('ul[aria-label="Productos desactivados"]')!;
+    expect(products.querySelector('.name')?.textContent).toBe('Piscola');
+    expect(products.querySelector('a')?.getAttribute('href')).toBe('/admin/carta/14/reactivar');
+    expect(products.querySelector('a')?.textContent?.trim()).toBe('Reactivar Piscola');
     expect(activeCards().map((card) => card.querySelector('.name')?.textContent)).not.toContain(
       'Piscola',
     );
+  });
+
+  it('lists there the deactivated variants of the active products too', async () => {
+    await render();
+
+    const inactive = root().querySelector('details.inactive')!;
+    const variants = inactive.querySelector('ul[aria-label="Variantes desactivadas"]')!;
+    expect(inactive.querySelector('summary')?.textContent).toBe('Desactivados (2)');
+    expect(variants.querySelector('.name')?.textContent).toBe('Jack Daniels Honey');
+    expect(variants.querySelector('a')?.getAttribute('href')).toBe(
+      '/admin/carta/9/variante/93/reactivar',
+    );
+    expect(variants.querySelector('a')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Reactivar Jack Daniels Honey',
+    );
+  });
+
+  it('leaves out the variants of a deactivated product: they wait for it', async () => {
+    const jack = { ...ADMIN_MENU[1], active: false };
+
+    await render([jack]);
+
+    const inactive = root().querySelector('details.inactive')!;
+    expect(inactive.querySelector('summary')?.textContent).toBe('Desactivados (1)');
+    expect(inactive.querySelector('ul[aria-label="Variantes desactivadas"]')).toBeNull();
+  });
+
+  it('has no "Desactivados" with everything active', async () => {
+    await render([ADMIN_MENU[0]]);
+
+    expect(root().querySelector('details.inactive')).toBeNull();
   });
 
   it('links to the new product form', async () => {

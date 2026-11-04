@@ -6,7 +6,7 @@ import { ADMIN_MENU } from '../../testing/admin-menu';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { AdminProductResponse } from './admin-product';
 import { MenuNotice } from './menu-notice';
-import { RENAME_WARNING } from './menu-rules';
+import { EVENT_OPEN_MESSAGE, RENAME_WARNING } from './menu-rules';
 import { ADDED_TO_GRID_WARNING, PRICE_CHANGE_WARNING, ProductFormPage } from './product-form-page';
 
 const VASO: AdminProductResponse = {
@@ -275,7 +275,12 @@ describe('ProductFormPage', () => {
   });
 
   describe('editing', () => {
-    async function edit(id: string, answer: 'menu' | 'offline' = 'menu'): Promise<void> {
+    async function edit(
+      id: string,
+      answer: 'menu' | 'offline' = 'menu',
+      event: 'none' | 'open' | 'unknown' = 'none',
+      menu: AdminProductResponse[] = ADMIN_MENU,
+    ): Promise<void> {
       fixture = TestBed.createComponent(ProductFormPage);
       fixture.componentRef.setInput('id', id);
       TestBed.tick();
@@ -283,9 +288,27 @@ describe('ProductFormPage', () => {
       if (answer === 'offline') {
         request.error(new ProgressEvent('error'));
       } else {
-        request.flush(ADMIN_MENU);
+        request.flush(menu);
+      }
+      const current = httpTesting.expectOne('/api/events/current');
+      if (event === 'open') {
+        current.flush({ id: 7, name: 'DRAMA Noviembre', status: 'OPEN' });
+      } else if (event === 'unknown') {
+        current.error(new ProgressEvent('error'));
+      } else {
+        current.flush(null, { status: 404, statusText: 'Not Found' });
       }
       await fixture.whenStable();
+    }
+
+    function hrefs(selector: string): (string | null)[] {
+      return Array.from(root().querySelectorAll(selector)).map((link) => link.getAttribute('href'));
+    }
+
+    function action(label: string): HTMLElement | undefined {
+      return Array.from(root().querySelectorAll<HTMLElement>('a, button')).find(
+        (candidate) => candidate.textContent?.replace(/\s+/g, ' ').trim() === label,
+      );
     }
 
     function changes(): Record<string, string> {
@@ -303,12 +326,106 @@ describe('ProductFormPage', () => {
       expect(root().querySelector('h1')?.textContent).toBe('Editar producto');
       expect(inputs().map((input) => input.value)).toEqual(['Jack Daniels', '8500', '15000']);
       expect(root().querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
-      expect(
-        Array.from(root().querySelectorAll('.variant-list a')).map((link) =>
-          link.getAttribute('href'),
-        ),
-      ).toEqual(['/admin/carta/9/variante/91', '/admin/carta/9/variante/92']);
+      expect(hrefs('.variant-list a')).toEqual([
+        '/admin/carta/9/variante/91',
+        '/admin/carta/9/variante/91/desactivar',
+        '/admin/carta/9/variante/92',
+        '/admin/carta/9/variante/92/desactivar',
+        '/admin/carta/9/variante/93/reactivar',
+      ]);
       expect(root().querySelector('.variant-name.off')?.textContent).toBe('Honey (desactivada)');
+    });
+
+    describe('deactivating', () => {
+      const ONLY_ORIGINAL: AdminProductResponse[] = [
+        {
+          ...ADMIN_MENU[1],
+          variants: [
+            { id: 91, name: 'Original', active: true },
+            { id: 92, name: 'Manzana', active: false },
+          ],
+        },
+      ];
+
+      function expectDisabled(label: string, describedBy: string): void {
+        const found = action(label) as HTMLButtonElement;
+        expect(found.tagName).toBe('BUTTON');
+        expect(found.disabled).toBe(true);
+        expect(found.getAttribute('aria-describedby')).toBe(describedBy);
+      }
+
+      it('links to "Desactivar producto", at the end of the page', async () => {
+        await edit('9');
+
+        expect(action('Desactivar producto')?.getAttribute('href')).toBe(
+          '/admin/carta/9/desactivar',
+        );
+        expect(root().querySelector('form')?.lastElementChild?.className).toBe('deactivate');
+      });
+
+      it('is not offered when adding a product, and asks for no event', () => {
+        expect(action('Desactivar producto')).toBeUndefined();
+      });
+
+      it('a product without variants only has "Desactivar producto"', async () => {
+        await edit('12');
+
+        expect(action('Desactivar Única')).toBeUndefined();
+        expect(action('Desactivar producto')?.getAttribute('href')).toBe(
+          '/admin/carta/12/desactivar',
+        );
+      });
+
+      it('with an open event, disables it all with the same text as the backend', async () => {
+        await edit('9', 'menu', 'open');
+
+        expectDisabled('Desactivar producto', 'deactivate-locked');
+        expectDisabled('Desactivar Original', 'variants-event-open');
+        expectDisabled('Desactivar Manzana', 'variants-event-open');
+        expect(EVENT_OPEN_MESSAGE).toBe(
+          'Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.',
+        );
+        expect(root().querySelector('#deactivate-locked')?.textContent).toBe(EVENT_OPEN_MESSAGE);
+        expect(root().querySelector('#variants-event-open')?.textContent).toBe(EVENT_OPEN_MESSAGE);
+      });
+
+      it('with an open event, reactivating and editing stay available', async () => {
+        await edit('9', 'menu', 'open');
+
+        expect(action('Reactivar Honey')?.getAttribute('href')).toBe(
+          '/admin/carta/9/variante/93/reactivar',
+        );
+        expect(action('Renombrar Manzana')?.tagName).toBe('A');
+      });
+
+      it('if the event cannot be checked, the backend decides', async () => {
+        await edit('9', 'menu', 'unknown');
+
+        expect(action('Desactivar producto')?.tagName).toBe('A');
+      });
+
+      it('does not offer the last active variant, and says what to do', async () => {
+        await edit('9', 'menu', 'none', ONLY_ORIGINAL);
+
+        expect(action('Desactivar Original')).toBeUndefined();
+        expect(root().querySelector('.variant-list .hint')?.textContent?.trim()).toBe(
+          'Es la última activa: para sacarla, desactiva el producto.',
+        );
+        expect(action('Reactivar Manzana')?.tagName).toBe('A');
+      });
+
+      it('locks every action with unsaved changes', async () => {
+        await edit('9');
+
+        await type(inputs()[1], '9.000');
+
+        expectDisabled('Desactivar Original', 'variants-locked');
+        expectDisabled('Reactivar Honey', 'variants-locked');
+        expectDisabled('Desactivar producto', 'deactivate-locked');
+        expect(root().querySelector('#deactivate-locked')?.textContent).toBe(
+          'Guarda o descarta los cambios para editar variantes',
+        );
+      });
     });
 
     it('a product without variants can get one', async () => {

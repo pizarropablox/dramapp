@@ -2,6 +2,8 @@ import { AdminProductResponse } from './admin-product';
 import {
   hasOnlySingleVariant,
   INVALID_PRICE_MESSAGE,
+  isLastActiveVariant,
+  lastActiveVariantError,
   nameError,
   normalizeName,
   parseClp,
@@ -51,6 +53,29 @@ const PISCOLA: AdminProductResponse = {
 };
 
 describe('menu rules', () => {
+  describe('isLastActiveVariant', () => {
+    const [original, manzana, honey] = JACK.variants;
+    const onlyOriginal: AdminProductResponse = {
+      ...JACK,
+      variants: [original, { ...manzana, active: false }, honey],
+    };
+
+    it('is the only active variant, with deactivated ones next to it', () => {
+      expect(isLastActiveVariant(onlyOriginal, original)).toBe(true);
+    });
+
+    it('is not one of several, nor a deactivated one', () => {
+      expect(isLastActiveVariant(JACK, original)).toBe(false);
+      expect(isLastActiveVariant(onlyOriginal, honey)).toBe(false);
+    });
+
+    it('says what to do instead', () => {
+      expect(lastActiveVariantError(JACK)).toBe(
+        'Es la última variante activa de «Jack Daniels»: desactiva el producto.',
+      );
+    });
+  });
+
   it('normalizes names as the backend stores them', () => {
     expect(normalizeName('  Vaso   de\tbebida ')).toBe('Vaso de bebida');
     expect(normalizeName(' Honey ')).toBe('Honey');
