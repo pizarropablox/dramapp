@@ -87,6 +87,15 @@ public class Product {
 		this.promoPrice = promoPrice;
 	}
 
+	/** Its variants are not touched: reactivating it brings back exactly the ones that were active. */
+	void deactivate() {
+		this.active = false;
+	}
+
+	void reactivate() {
+		this.active = true;
+	}
+
 	public Long getId() {
 		return id;
 	}

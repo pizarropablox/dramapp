@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 /**
  * Menu rules the database cannot check on its own: names compared ignoring case and spaces, a promo cheaper than its
  * glasses at the normal price, and the "Única" variant of products without real variants. Pure: no Spring, no
- * database. Adding (DRAMA-29) and editing (DRAMA-28) the menu share them.
+ * database. Adding (DRAMA-29), editing (DRAMA-28) and deactivating (DRAMA-30) the menu share them.
  */
 public final class MenuRules {
 
@@ -93,8 +93,15 @@ public final class MenuRules {
 		}
 	}
 
-	static boolean isSingleVariant(String variantName) {
+	public static boolean isSingleVariant(String variantName) {
 		return sameName(variantName, SINGLE_VARIANT_NAME);
+	}
+
+	/** An active product keeps a variant to sell, or it would vanish from Venta while still listed as active. */
+	static void checkNotLastActiveVariant(Product product) {
+		if (product.getVariants().stream().filter(ProductVariant::isActive).count() <= 1) {
+			throw CannotDeactivateException.lastActiveVariant(product);
+		}
 	}
 
 	/** "$12.000". */
