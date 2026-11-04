@@ -119,7 +119,8 @@ export class CartStore {
 
   /**
    * Admin edited the menu (DRAMA-28): the lines take the current prices, promo and names, so the total on
-   * screen is what the backend will charge. A line no longer on the menu is kept (DRAMA-30). Only sets the
+   * screen is what the backend will charge. Lines no longer on the menu are not removed: the menu is deactivated
+   * before the party, and what runs out during the night is handled with «Sin stock» (DRAMA-51). Only sets the
    * lines if one changed, so it can run on every change of them.
    */
   syncMenu(menu: readonly ProductResponse[]): void {
