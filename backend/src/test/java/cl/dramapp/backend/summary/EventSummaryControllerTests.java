@@ -2,6 +2,7 @@ package cl.dramapp.backend.summary;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Map;
 
@@ -204,6 +205,28 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 			.containsExactly("Manzana", "Original");
 		assertThat(result).bodyJson().extractingPath("$.products[2].variants[*].units").asArray()
 			.containsExactly(2, 1);
+	}
+
+	/** DRAMA-30: what was sold stays in Totales after it leaves the menu, its units and amounts untouched. */
+	@Test
+	void deactivatingWhatWasSoldChangesNothingInAClosedEvent() throws Exception {
+		Event event = eventWithSales();
+		event.close();
+		eventRepository.saveAndFlush(event);
+		entityManager.clear();
+		String before = summary(event.getId()).getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+		ProductVariant redBull = variant("Red Bull", "Única");
+		ProductVariant manzana = variant("Jack Daniels", "Manzana");
+		productService.deactivateProduct(redBull.getProduct().getId());
+		productService.deactivateVariant(manzana.getProduct().getId(), manzana.getId());
+		entityManager.flush();
+		entityManager.clear();
+
+		var after = summary(event.getId());
+
+		assertThat(after.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(before);
+		assertThat(after).bodyJson().extractingPath("$.products[*].productName").asArray().contains("Red Bull");
 	}
 
 	/** DRAMA-29: a product added from ⚙️ Administración shows up in Totales like any other. */
