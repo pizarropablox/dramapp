@@ -88,6 +88,7 @@
     <app-cart-panel
       [lines]="cart.lines()"
       [itemCount]="cart.itemCount()"
+      [outOfStock]="outOfStock()"
       [lastAdded]="cart.lastAdded()"
       [(expanded)]="cartExpanded"
       [undoable]="!!emptied()"
@@ -190,7 +191,11 @@
 }
 
 @if (notice(); as message) {
-  <div class="toast" role="status">
+  <div
+    class="toast"
+    [class.alert]="noticeIsAlert()"
+    [attr.role]="noticeIsAlert() ? 'alert' : 'status'"
+  >
     <p>{{ message }}</p>
     <button type="button" aria-label="Cerrar aviso" (click)="showNotice(null)">✕</button>
   </div>

@@ -38,6 +38,11 @@ export function priceChangedNotice(before: number, after: number): string {
   return `El precio cambió: total ${formatClp(before)} → ${formatClp(after)}.`;
 }
 
+/** Why the sale cannot be confirmed with these lines in the cart: the cashier decides, nothing is removed. */
+export function outOfStockHint(names: readonly string[]): string {
+  return `Agotado: ${names.join(', ')}. ${names.length === 1 ? 'Quítalo' : 'Quítalos'} para vender.`;
+}
+
 /**
  * Shown once a saved cart comes back after a reload: "Pedido recuperado · 3 productos", or naming what
  * was dropped because it is no longer on the menu.

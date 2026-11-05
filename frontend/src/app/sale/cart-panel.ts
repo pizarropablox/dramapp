@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { lineLabel } from './cart-storage';
 import { AddedLine, CartLine } from './cart-store';
+import { NOTHING_OUT_OF_STOCK, OutOfStock } from './stock';
 
 @Component({
   selector: 'app-cart-panel',
@@ -46,7 +47,11 @@ import { AddedLine, CartLine } from './cart-store';
     @if (expanded() && lines().length > 0) {
       <ul #list id="cart-lines" class="lines">
         @for (line of lines(); track line.variant.id) {
-          <li class="line" [attr.data-variant-id]="line.variant.id">
+          <li
+            class="line"
+            [class.out-of-stock]="outOfStock().has(line.variant.id)"
+            [attr.data-variant-id]="line.variant.id"
+          >
             <span class="label">
               {{ line.product.name }}
               @if (line.product.variants.length > 1) {
@@ -62,13 +67,18 @@ import { AddedLine, CartLine } from './cart-store';
                 −
               </button>
               <span class="quantity" aria-live="polite">{{ line.quantity }}</span>
-              <button
-                type="button"
-                [attr.aria-label]="'Agregar uno de ' + lineName(line)"
-                (click)="incremented.emit(line.variant.id)"
-              >
-                +
-              </button>
+              <!-- In the place of "+": nothing more can be added, and the row keeps its height. -->
+              @if (outOfStock().has(line.variant.id)) {
+                <span class="sold-out">Agotado</span>
+              } @else {
+                <button
+                  type="button"
+                  [attr.aria-label]="'Agregar uno de ' + lineName(line)"
+                  (click)="incremented.emit(line.variant.id)"
+                >
+                  +
+                </button>
+              }
             </span>
           </li>
         }
@@ -183,6 +193,23 @@ import { AddedLine, CartLine } from './cart-store';
       border-bottom: 1px solid var(--border);
     }
 
+    // Same stripes as the Venta grid.
+    .out-of-stock {
+      background: repeating-linear-gradient(135deg, var(--bg) 0 0.5rem, var(--surface) 0.5rem 1rem);
+      color: var(--muted);
+    }
+
+    // Wider than the "+" it replaces: the label gives up that room, and the row keeps its fixed height.
+    .sold-out {
+      min-width: 2.5rem;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
     .label {
       flex: 1;
       min-width: 0;
@@ -235,6 +262,8 @@ import { AddedLine, CartLine } from './cart-store';
 export class CartPanel {
   readonly lines = input.required<readonly CartLine[]>();
   readonly itemCount = input.required<number>();
+  /** Those lines stay, in grey, until the cashier takes them out with the customer. */
+  readonly outOfStock = input<OutOfStock>(NOTHING_OUT_OF_STOCK);
   readonly expanded = model(true);
   readonly incremented = output<number>();
   readonly decremented = output<number>();

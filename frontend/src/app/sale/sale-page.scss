@@ -212,6 +212,13 @@
   }
 }
 
+// "Se acabó: Tropical Gin": bad news, not in green. Up here, not as a banner in the checkout, whose height
+// with "Muy grande" has no room left and would push "Confirmar venta" under its inner scroll.
+.toast.alert {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
 // "No se pudo cargar el evento. {detalle} [Reintentar]": its own full-width row under the header, so the
 // detail is readable (the header only has room for "Sin conexión ↻").
 .event-error {

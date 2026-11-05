@@ -24,6 +24,7 @@ import { VoidRefundDialog } from '../refund/void-refund-dialog';
 import { errorMessage } from '../shared/api-error';
 import { formatClp } from '../shared/clp';
 import { CartPanel } from './cart-panel';
+import { lineLabel } from './cart-storage';
 import { CartStore, EmptiedCart } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
 import { PendingSaleNotice } from './pending-sale-notice';
@@ -32,8 +33,15 @@ import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
-import { NOTHING_OUT_OF_STOCK, OutOfStock, outOfStockFromIds, outOfStockFromMenu } from './stock';
 import {
+  NOTHING_OUT_OF_STOCK,
+  OutOfStock,
+  outOfStockConflict,
+  outOfStockFromIds,
+  outOfStockFromMenu,
+} from './stock';
+import {
+  outOfStockHint,
   priceChangedNotice,
   REFUND_VOIDED_NOTICE,
   refundNotice,
@@ -44,7 +52,10 @@ import { TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
 import { VoidSaleDialog } from './void-sale-dialog';
 
-/** POST /api/sales only answers 409 when there is no open event: admin closed it from another phone. */
+/**
+ * POST /api/sales answers 409 when there is no open event (admin closed it from another phone) or when a line is
+ * «Agotado», which comes with its own code: see outOfStockConflict.
+ */
 export const EVENT_CLOSED_MESSAGE =
   'El evento está cerrado: esta venta no se registró. El carrito sigue aquí.';
 
@@ -126,6 +137,13 @@ export class SalePage {
     this.menu.hasValue() ? outOfStockFromMenu(this.menu.value()) : NOTHING_OUT_OF_STOCK,
   );
 
+  /** They stay in the cart, in grey, and block confirming until the cashier takes them out. */
+  protected readonly outOfStockLines = computed(() =>
+    this.cart.lines().filter((line) => this.outOfStock().has(line.variant.id)),
+  );
+  /** Those already shown to the cashier: only a line going grey opens the cart and scrolls to it. */
+  private revealedOutOfStock: ReadonlySet<number> = new Set();
+
   /** Expanded by default whenever the cart gets products; the cashier can collapse it. */
   protected readonly cartExpanded = linkedSignal(() => !this.cart.isEmpty());
 
@@ -177,6 +195,8 @@ export class SalePage {
 
   /** "Venta anulada.", "Devolución registrada…": over everything, until closed or the next action. */
   protected readonly notice = signal<string | null>(null);
+  /** "Se acabó: Tropical Gin" is not good news. */
+  protected readonly noticeIsAlert = signal(false);
 
   protected readonly blockReason = computed(() => {
     if (!this.openEvent()) {
@@ -187,6 +207,9 @@ export class SalePage {
     }
     if (this.cart.isEmpty()) {
       return 'Agrega productos para vender.';
+    }
+    if (this.outOfStockLines().length > 0) {
+      return outOfStockHint(this.outOfStockLines().map(lineLabel));
     }
     if (this.tipAmount() > MAX_TIP) {
       return `La propina no puede superar ${formatClp(MAX_TIP)}.`;
@@ -246,6 +269,20 @@ export class SalePage {
         }
       });
     });
+
+    // A line going grey may be out of view: the cart can be collapsed, and "Muy grande" may show a single row.
+    effect(() => {
+      const lines = this.outOfStockLines();
+      untracked(() => {
+        const seen = this.revealedOutOfStock;
+        this.revealedOutOfStock = new Set(lines.map((line) => line.variant.id));
+        const fresh = lines.find((line) => !seen.has(line.variant.id));
+        if (fresh) {
+          this.cartExpanded.set(true);
+          this.cart.reveal(fresh.variant.id);
+        }
+      });
+    });
   }
 
   /**
@@ -285,9 +322,14 @@ export class SalePage {
   }
 
   /** autoCloseMs null: until closed or the next action. */
-  protected showNotice(message: string | null, autoCloseMs: number | null = null): void {
+  protected showNotice(
+    message: string | null,
+    autoCloseMs: number | null = null,
+    alert = false,
+  ): void {
     clearTimeout(this.noticeTimer);
     this.notice.set(message);
+    this.noticeIsAlert.set(alert);
     if (message !== null && autoCloseMs !== null) {
       this.noticeTimer = setTimeout(() => this.notice.set(null), autoCloseMs);
     }
@@ -408,7 +450,12 @@ export class SalePage {
             return;
           }
           this.cart.markNotSent();
-          if (error.status === HttpStatusCode.Conflict) {
+          const outOfStockIds = outOfStockConflict(error);
+          if (outOfStockIds) {
+            // Back to the cart with nothing touched: the lines go grey and the cashier decides.
+            this.setOutOfStock(outOfStockFromIds(this.outOfStock(), outOfStockIds));
+            this.showNotice(errorMessage(error), null, true);
+          } else if (error.status === HttpStatusCode.Conflict) {
             this.saleError.set(EVENT_CLOSED_MESSAGE);
             this.currentEvent.refresh();
           } else {
