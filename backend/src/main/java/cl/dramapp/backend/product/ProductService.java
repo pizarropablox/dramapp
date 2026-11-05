@@ -216,7 +216,7 @@ public class ProductService {
 			.orElseThrow(() -> new ProductNotFoundException(productId));
 	}
 
-	private static ProductVariant findVariant(Product product, Long variantId) {
+	static ProductVariant findVariant(Product product, Long variantId) {
 		return product.getVariants().stream()
 			.filter(candidate -> candidate.getId().equals(variantId))
 			.findFirst()

@@ -52,6 +52,9 @@ class SecurityConfig {
 			.requestMatchers(GET, "/api/auth/me").hasRole(Role.BARRA.name())
 			// Exact paths only: any other /api/products path stays denied until it is listed here.
 			.requestMatchers(GET, "/api/products").hasRole(Role.BARRA.name())
+			// «Agotado» (DRAMA-51): the cashier marks it during the night, without going through admin.
+			.requestMatchers(POST, "/api/products/*/variants/*/out-of-stock", "/api/products/*/variants/*/restock")
+			.hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/events/current", "/api/events/*/summary").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/sales").hasRole(Role.BARRA.name())
 			.requestMatchers(POST, "/api/sales", "/api/sales/*/void").hasRole(Role.BARRA.name())
