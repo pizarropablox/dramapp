@@ -3,6 +3,7 @@ package cl.dramapp.backend.sale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -17,6 +18,8 @@ import cl.dramapp.backend.product.MenuRules;
 import cl.dramapp.backend.product.Product;
 import cl.dramapp.backend.product.ProductVariant;
 import cl.dramapp.backend.product.ProductVariantRepository;
+import cl.dramapp.backend.product.StockOutRepository;
+import cl.dramapp.backend.product.StockOutResponse;
 
 @Service
 public class SaleService {
@@ -32,19 +35,25 @@ public class SaleService {
 
 	private final SaleRepository saleRepository;
 
+	private final StockOutRepository stockOutRepository;
+
 	public SaleService(EventRepository eventRepository, ProductVariantRepository productVariantRepository,
-			SaleRepository saleRepository) {
+			SaleRepository saleRepository, StockOutRepository stockOutRepository) {
 		this.eventRepository = eventRepository;
 		this.productVariantRepository = productVariantRepository;
 		this.saleRepository = saleRepository;
+		this.stockOutRepository = stockOutRepository;
 	}
 
 	/**
 	 * Registers a sale in the open event, pricing it with the current menu.
 	 * Lines repeating a variant are merged into one. The tip is kept apart from the products subtotal.
+	 * Checks, in order: an event is open (409), every line exists and is on the menu (400), none is «Agotado» (409).
+	 * No lock against a mark arriving meanwhile: the sale is confirmed before the drink is made, and the indicator
+	 * is the bar, not this check.
 	 */
 	@Transactional
-	public SaleResponse register(RegisterSaleRequest request) {
+	public RegisteredSaleResponse register(RegisterSaleRequest request) {
 		Event event = eventRepository.findByStatus(EventStatus.OPEN).orElseThrow(NoOpenEventException::new);
 
 		Map<Long, Integer> quantityByVariantId = new LinkedHashMap<>();
@@ -62,9 +71,24 @@ public class SaleService {
 			.toList();
 		long subtotal = PriceCalculator.subtotal(items);
 
+		List<Long> outOfStockVariantIds = stockOutRepository.findCurrent().stream()
+			.map(StockOutResponse::variantId)
+			.toList();
+		checkInStock(quantityByVariantId.keySet(), variantsById, outOfStockVariantIds);
+
 		Sale sale = new Sale(event, request.paymentMethod(), subtotal, request.tipAmount());
 		quantityByVariantId.forEach((variantId, quantity) -> sale.addLine(variantsById.get(variantId), quantity));
-		return SaleResponse.from(saleRepository.save(sale));
+		return new RegisteredSaleResponse(SaleResponse.from(saleRepository.save(sale)), outOfStockVariantIds);
+	}
+
+	/** Names every line that ran out, not just the first: the cashier sorts them out with the customer at once. */
+	private static void checkInStock(Set<Long> saleVariantIds, Map<Long, ProductVariant> variantsById,
+			List<Long> outOfStockVariantIds) {
+		List<Long> affected = saleVariantIds.stream().filter(outOfStockVariantIds::contains).toList();
+		if (!affected.isEmpty()) {
+			List<String> names = affected.stream().map(id -> menuName(variantsById.get(id))).toList();
+			throw new OutOfStockSaleException(names, affected, outOfStockVariantIds);
+		}
 	}
 
 	/** Latest sales of the open event, newest first, voided ones included. Empty when no event is open. */

@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,6 +26,8 @@ import cl.dramapp.backend.event.Event;
 import cl.dramapp.backend.event.EventRepository;
 import cl.dramapp.backend.product.ProductRepository;
 import cl.dramapp.backend.product.ProductVariant;
+import cl.dramapp.backend.product.StockOut;
+import cl.dramapp.backend.product.StockOutRepository;
 import jakarta.persistence.EntityManager;
 
 @SpringBootTest
@@ -43,6 +47,9 @@ class SaleControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private SaleRepository saleRepository;
+
+	@Autowired
+	private StockOutRepository stockOutRepository;
 
 	@Autowired
 	private EntityManager entityManager;
@@ -211,7 +218,124 @@ class SaleControllerTests extends PostgresIntegrationTest {
 			.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
 		assertThat(result).bodyJson().extractingPath("$.title").isEqualTo("Sin evento abierto");
 		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("No hay un evento abierto");
+		assertThat(result).bodyJson().doesNotHavePath("$.code");
 		assertThat(saleRepository.count()).isZero();
+	}
+
+	private void markOutOfStock(Event event, ProductVariant variant) {
+		stockOutRepository.saveAndFlush(new StockOut(event, variant, "barra"));
+	}
+
+	private static String saleOf(ProductVariant... variants) {
+		String lines = Arrays.stream(variants)
+			.map(variant -> "{\"variantId\": %d, \"quantity\": 1}".formatted(variant.getId()))
+			.collect(Collectors.joining(","));
+		return "{\"paymentMethod\": \"EFECTIVO\", \"lines\": [" + lines + "]}";
+	}
+
+	@Test
+	void rejectsALineThatIsOutOfStockAndRegistersNothing() {
+		Event event = openEvent();
+		ProductVariant gin = variant("Tropical Gin", "Única");
+		markOutOfStock(event, gin);
+
+		var result = post(saleOf(variant("Red Bull", "Única"), gin));
+
+		assertThat(result).hasStatus(HttpStatus.CONFLICT)
+			.hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+		assertThat(result).bodyJson().extractingPath("$.title").isEqualTo("Agotado");
+		assertThat(result).bodyJson().extractingPath("$.code").isEqualTo("OUT_OF_STOCK");
+		assertThat(result).bodyJson().extractingPath("$.detail").isEqualTo("Se acabó: Tropical Gin");
+		assertThat(result).bodyJson().extractingPath("$.affectedVariantIds").asArray().hasSize(1);
+		assertThat(saleRepository.count()).isZero();
+	}
+
+	@Test
+	void namesEveryLineThatRanOutAndAnswersWithEverythingOut() {
+		Event event = openEvent();
+		ProductVariant gin = variant("Tropical Gin", "Única");
+		ProductVariant cerveza = variant("Cerveza", "0,0");
+		markOutOfStock(event, gin);
+		markOutOfStock(event, cerveza);
+		markOutOfStock(event, variant("Tequila", "Única"));
+
+		var result = post(saleOf(gin, cerveza));
+
+		assertThat(result).bodyJson().extractingPath("$.detail").isEqualTo("Se acabó: Tropical Gin, Cerveza 0,0");
+		assertThat(result).bodyJson().extractingPath("$.affectedVariantIds").asArray().hasSize(2);
+		assertThat(result).bodyJson().extractingPath("$.outOfStockVariantIds").asArray().hasSize(3);
+	}
+
+	@Test
+	void aRegisteredSaleAnswersWithWhatIsOutOfStock() {
+		Event event = openEvent();
+		ProductVariant gin = variant("Tropical Gin", "Única");
+		markOutOfStock(event, gin);
+
+		var result = post(saleOf(variant("Red Bull", "Única")));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.id").isNotNull();
+		assertThat(result).bodyJson().extractingPath("$.amountToCharge").isEqualTo(3500);
+		assertThat(result).bodyJson().extractingPath("$.outOfStockVariantIds[0]").convertTo(Long.class)
+			.isEqualTo(gin.getId());
+		assertThat(result).bodyJson().doesNotHavePath("$.sale");
+	}
+
+	@Test
+	void aRegisteredSaleAnswersWithAnEmptyListWhenNothingIsOut() {
+		openEvent();
+
+		var result = post(saleOf(variant("Red Bull", "Única")));
+
+		assertThat(result).bodyJson().extractingPath("$.outOfStockVariantIds").asArray().isEmpty();
+	}
+
+	@Test
+	void aVariantWithAnotherVariantOutOfStockCanBeSold() {
+		Event event = openEvent();
+		markOutOfStock(event, variant("Jack Daniels", "Manzana"));
+
+		var result = post(saleOf(variant("Jack Daniels", "Original")));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+	}
+
+	@Test
+	void sellsAgainOnceMoreCame() {
+		Event event = openEvent();
+		ProductVariant gin = variant("Tropical Gin", "Única");
+		markOutOfStock(event, gin);
+		assertThat(mvc.post()
+			.uri("/api/products/{id}/variants/{variantId}/restock", gin.getProduct().getId(), gin.getId())
+			.exchange()).hasStatusOk();
+
+		var result = post(saleOf(gin));
+
+		assertThat(result).hasStatus(HttpStatus.CREATED);
+		assertThat(result).bodyJson().extractingPath("$.outOfStockVariantIds").asArray().isEmpty();
+	}
+
+	/** Off the menu comes first: the frontend reads a 409 very differently from this 400. */
+	@Test
+	void aDeactivatedLineIsRejectedAsThatEvenIfMarked() {
+		Event event = openEvent();
+		ProductVariant honey = variant("Jack Daniels", "Honey");
+		markOutOfStock(event, honey);
+
+		assertBadRequest(post(saleOf(honey)));
+	}
+
+	@Test
+	void theListOfSalesDoesNotCarryTheMarks() {
+		Event event = openEvent();
+		markOutOfStock(event, variant("Tropical Gin", "Única"));
+		post(saleOf(variant("Red Bull", "Única")));
+
+		var result = recent("");
+
+		assertThat(result).hasStatus(HttpStatus.OK);
+		assertThat(result).bodyJson().doesNotHavePath("$[0].outOfStockVariantIds");
 	}
 
 	@Test
