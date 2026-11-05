@@ -1,6 +1,7 @@
 import { Component, input, output } from '@angular/core';
 import { ProductResponse } from '../product/product';
 import { ClpPipe } from '../shared/clp';
+import { isProductOutOfStock, NOTHING_OUT_OF_STOCK, OutOfStock } from './stock';
 
 @Component({
   selector: 'app-product-grid',
@@ -9,10 +10,21 @@ import { ClpPipe } from '../shared/clp';
     <ul class="grid">
       @for (product of products(); track product.id) {
         <li>
-          <button type="button" class="product" (click)="selected.emit(product)">
+          <!-- Never disabled: tapping a grey button offers «¿Llegó más?». -->
+          <button
+            type="button"
+            class="product"
+            [class.out-of-stock]="isOut(product)"
+            (click)="selected.emit(product)"
+          >
             <span class="name">{{ product.name }}</span>
             <span class="price-row">
-              <span class="price">{{ product.unitPrice | clp }}</span>
+              <!-- In the place of the price, so the button keeps its height and the grid does not move. -->
+              @if (isOut(product)) {
+                <span class="price sold-out">Agotado</span>
+              } @else {
+                <span class="price">{{ product.unitPrice | clp }}</span>
+              }
               @if (unitsByProduct().get(product.id); as units) {
                 <span class="badge">
                   <span class="visually-hidden">En el carrito:</span>{{ units }}
@@ -54,6 +66,28 @@ import { ClpPipe } from '../shared/clp';
 
     .product:active {
       background: var(--surface-2);
+    }
+
+    // The buttons are already dark grey, and a pressed one is lighter: the stripes and the text are what say it
+    // apart, not the color. No opacity, so the text keeps its contrast.
+    .out-of-stock {
+      border-style: dashed;
+      background: repeating-linear-gradient(135deg, var(--bg) 0 0.5rem, var(--surface) 0.5rem 1rem);
+      color: var(--muted);
+    }
+
+    .out-of-stock:active {
+      background: var(--surface-2);
+    }
+
+    .out-of-stock .promo {
+      color: var(--muted);
+    }
+
+    .sold-out {
+      color: var(--text);
+      font-weight: 700;
+      text-transform: uppercase;
     }
 
     .name {
@@ -118,5 +152,10 @@ import { ClpPipe } from '../shared/clp';
 export class ProductGrid {
   readonly products = input.required<readonly ProductResponse[]>();
   readonly unitsByProduct = input<ReadonlyMap<number, number>>(new Map());
+  readonly outOfStock = input<OutOfStock>(NOTHING_OUT_OF_STOCK);
   readonly selected = output<ProductResponse>();
+
+  protected isOut(product: ProductResponse): boolean {
+    return isProductOutOfStock(product, this.outOfStock());
+  }
 }

@@ -74,7 +74,7 @@ export interface RestoredCart extends CartSnapshot {
 }
 
 /** "Jack Daniels Manzana", or just "Red Bull" when the product has a single variant. */
-export function lineLabel(line: CartLine): string {
+export function lineLabel(line: Pick<CartLine, 'product' | 'variant'>): string {
   return line.product.variants.length > 1
     ? `${line.product.name} ${line.variant.name}`
     : line.product.name;

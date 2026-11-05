@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Service } from '@angular/core';
 import { Observable, timeout } from 'rxjs';
-import { RegisterSaleRequest, SaleResponse, VoidSaleRequest } from './sale';
+import { RegisteredSaleResponse, RegisterSaleRequest, SaleResponse, VoidSaleRequest } from './sale';
 
 /**
  * How long a sale waits for the backend. Past it, the request is cancelled (a late answer is ignored) and
@@ -14,9 +14,9 @@ export class SaleService {
   private readonly http = inject(HttpClient);
 
   /** Fails with rxjs' TimeoutError after SALE_REQUEST_TIMEOUT_MS. Only here: the rest of the API waits. */
-  register(request: RegisterSaleRequest): Observable<SaleResponse> {
+  register(request: RegisterSaleRequest): Observable<RegisteredSaleResponse> {
     return this.http
-      .post<SaleResponse>('/api/sales', request)
+      .post<RegisteredSaleResponse>('/api/sales', request)
       .pipe(timeout(SALE_REQUEST_TIMEOUT_MS));
   }
 

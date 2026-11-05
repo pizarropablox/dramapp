@@ -27,7 +27,7 @@ import jakarta.persistence.EntityManager;
 @WithMockUser(roles = "ADMIN")
 class ProductStatusControllerTests extends PostgresIntegrationTest {
 
-	private static final String EVENT_OPEN = "Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.";
+	private static final String EVENT_OPEN = "Hay un evento abierto. Si se acabó esta noche, márcalo agotado.";
 
 	@Autowired
 	private MockMvcTester mvc;

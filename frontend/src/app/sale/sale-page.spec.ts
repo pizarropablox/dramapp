@@ -16,6 +16,7 @@ import {
 import { EventResponse } from '../event/event';
 import { RefundResponse } from '../refund/refund';
 import { ProductResponse } from '../product/product';
+import { STOCK_REQUEST_TIMEOUT_MS } from '../product/product.service';
 import { NO_CONNECTION_MESSAGE } from '../shared/api-error';
 import { MemoryStorage } from '../../testing/memory-storage';
 import { CART_STORAGE, CART_STORAGE_KEY } from './cart-storage';
@@ -308,6 +309,50 @@ describe('SalePage', () => {
       expect(text()).not.toContain('Sin evento abierto');
     });
 
+    /** The menu resource answers in a microtask, which TestBed.tick() does not wait for. */
+    async function settle(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+    }
+
+    it('a new event brings its menu, so no grey stays from the previous party', async () => {
+      const marked = MENU.map((product) => ({
+        ...product,
+        variants: product.variants.map((variant) => ({
+          ...variant,
+          outOfStockSince: '2026-10-01T06:30:00Z',
+        })),
+      }));
+      fixture = TestBed.createComponent(SalePage);
+      TestBed.tick();
+      answerEvent(OPEN_EVENT);
+      httpTesting.expectOne('/api/products').flush(marked);
+      await settle();
+      expect(root().querySelectorAll('app-product-grid .out-of-stock')).toHaveLength(4);
+
+      advance(POLL_WITH_EVENT_MS);
+      answerEvent(null);
+      await settle();
+      httpTesting.expectNone('/api/products');
+      advance(POLL_WITHOUT_EVENT_MS);
+      answerEvent({ ...OPEN_EVENT, id: 8 });
+      httpTesting.expectOne('/api/products').flush(MENU);
+      await settle();
+
+      expect(root().querySelectorAll('app-product-grid .out-of-stock')).toHaveLength(0);
+    });
+
+    it('asking again for the same event does not ask for the menu', async () => {
+      start(OPEN_EVENT);
+      await settle();
+
+      advance(POLL_WITH_EVENT_MS);
+      answerEvent(OPEN_EVENT);
+      await settle();
+
+      httpTesting.expectNone('/api/products');
+    });
+
     it('notices within a minute that the event was closed, and blocks the sale', () => {
       start(OPEN_EVENT);
 
@@ -504,6 +549,7 @@ describe('SalePage', () => {
           await tap(button('No está: seguir'));
 
           expect(total()).toBe('$4.000');
+          httpTesting.expectOne('/api/products').flush(MENU_NOW);
         });
       });
 
@@ -561,7 +607,7 @@ describe('SalePage', () => {
         expect(cartLabels()).toEqual(['Red Bull']);
       });
 
-      it('does not apply an answer that arrives once a sale is being sent', async () => {
+      it('confirming drops a reload in flight: its answer is older than the sale', async () => {
         await setup();
         backToTheForeground();
         const menuRequest = httpTesting.expectOne('/api/products');
@@ -570,13 +616,785 @@ describe('SalePage', () => {
         confirmButton().click();
         TestBed.tick();
 
-        menuRequest.flush([...MENU, VASO]);
-        await fixture.whenStable();
-
-        expect(names()).not.toContain('Vaso de bebida');
+        expect(menuRequest.cancelled).toBe(true);
         httpTesting
           .expectOne('/api/sales')
           .flush(saleResponse({ subtotal: 3500, tipAmount: 0, amountToCharge: 3500 }));
+      });
+    });
+  });
+
+  describe('Agotado', () => {
+    const SINCE = '2026-11-01T06:30:00Z';
+    /** Red Bull and Jack Daniels Manzana are out. */
+    const MARKED_MENU: ProductResponse[] = MENU.map((product) => ({
+      ...product,
+      variants: product.variants.map((variant) =>
+        variant.id === 121 || variant.id === 92 ? { ...variant, outOfStockSince: SINCE } : variant,
+      ),
+    }));
+
+    function isGrey(name: string): boolean {
+      return productButton(name).classList.contains('out-of-stock');
+    }
+
+    function grey(): string[] {
+      return Array.from(root().querySelectorAll('app-product-grid .out-of-stock .name')).map(
+        (name) => name.textContent?.trim() ?? '',
+      );
+    }
+
+    async function sell(outOfStockVariantIds?: number[]): Promise<void> {
+      await tap(productButton('Agua 600cc'));
+      await tap(button('Efectivo'));
+      confirmButton().click();
+      TestBed.tick();
+      httpTesting.expectOne('/api/sales').flush({
+        ...saleResponse({ subtotal: 3000, tipAmount: 0, amountToCharge: 3000 }),
+        outOfStockVariantIds,
+      });
+      await fixture.whenStable();
+      await tap(button('Siguiente venta'));
+    }
+
+    describe('in the grid', () => {
+      it('keeps the button in its place, with the label in the place of the price', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        const names = Array.from(root().querySelectorAll('app-product-grid .name')).map((name) =>
+          name.textContent?.trim(),
+        );
+        expect(names).toEqual(['Cerveza', 'Jack Daniels', 'Red Bull', 'Agua 600cc']);
+        expect(isGrey('Red Bull')).toBe(true);
+        expect(productButton('Red Bull').querySelector('.price')?.textContent).toBe('Agotado');
+        expect(productButton('Red Bull').textContent).not.toContain('$3.500');
+        expect(productButton('Red Bull').disabled).toBe(false);
+      });
+
+      it('does not add it to the cart', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await tap(productButton('Red Bull'));
+
+        expect(cartLabels()).toEqual([]);
+        await tap(button('Cancelar'));
+      });
+
+      it('leaves a product with another variant left as it is', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        expect(isGrey('Jack Daniels')).toBe(false);
+        expect(productButton('Jack Daniels').textContent).toContain('$8.500');
+      });
+
+      it('goes grey when every variant is out', async () => {
+        const allOut = MENU.map((product) =>
+          product.id === 1
+            ? {
+                ...product,
+                variants: product.variants.map((v) => ({ ...v, outOfStockSince: SINCE })),
+              }
+            : product,
+        );
+        await setup(OPEN_EVENT, allOut);
+
+        expect(isGrey('Cerveza')).toBe(true);
+      });
+    });
+
+    describe('in the variant picker', () => {
+      it('shows it in grey, in its place, and does not add it', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await tap(productButton('Jack Daniels'));
+
+        const variants = Array.from(dialog()!.querySelectorAll<HTMLElement>('.variant'));
+        expect(variants.map((v) => v.textContent?.trim())).toEqual(['Original', 'Manzana Agotado']);
+        expect(variants[1].classList.contains('out-of-stock')).toBe(true);
+
+        await tap(variants[1]);
+
+        expect(cartLabels()).toEqual([]);
+      });
+
+      it('highlights the first variant that can be sold, not a grey one', async () => {
+        const firstOut = MENU.map((product) =>
+          product.id === 9
+            ? {
+                ...product,
+                variants: [{ ...product.variants[0], outOfStockSince: SINCE }, product.variants[1]],
+              }
+            : product,
+        );
+        await setup(OPEN_EVENT, firstOut);
+
+        await tap(productButton('Jack Daniels'));
+
+        expect(dialog()!.querySelector('.primary')?.textContent?.trim()).toBe('Manzana');
+        expect(document.activeElement?.textContent?.trim()).toBe('Manzana');
+      });
+    });
+
+    describe('reaching this phone', () => {
+      it('comes with the answer to a sale, without asking for the menu', async () => {
+        await setup();
+
+        await sell([121]);
+
+        expect(grey()).toEqual(['Red Bull']);
+        httpTesting.expectNone('/api/products');
+      });
+
+      it('a sale also takes off what another phone unmarked', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await sell([92]);
+
+        expect(grey()).toEqual([]);
+      });
+
+      it('keeps the marks when an older backend sends no list', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await sell(undefined);
+
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('does not move a button or touch the cart', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('$1.000'));
+        const before = Array.from(root().querySelectorAll('app-product-grid button'));
+
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+        httpTesting.expectOne('/api/products').flush(MARKED_MENU);
+        await fixture.whenStable();
+
+        expect(Array.from(root().querySelectorAll('app-product-grid button'))).toEqual(before);
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+      });
+    });
+
+    describe('with a line in the cart', () => {
+      function line(label: string): HTMLElement {
+        const found = Array.from(root().querySelectorAll<HTMLElement>('app-cart-panel .line')).find(
+          (candidate) => candidate.textContent?.includes(label),
+        );
+        if (!found) {
+          throw new Error(`No line "${label}"`);
+        }
+        return found;
+      }
+
+      async function answerOutOfStock(ids: number[], detail = 'Se acabó: Red Bull'): Promise<void> {
+        httpTesting.expectOne('/api/sales').flush(
+          {
+            title: 'Agotado',
+            status: 409,
+            code: 'OUT_OF_STOCK',
+            detail,
+            affectedVariantIds: ids,
+            outOfStockVariantIds: ids,
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        await fixture.whenStable();
+      }
+
+      async function confirmWithRedBullAndWater(): Promise<void> {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(productButton('Agua 600cc'));
+        await tap(button('$1.000'));
+        await tap(button('Mercado Pago'));
+        confirmButton().click();
+        TestBed.tick();
+      }
+
+      it('a 409 leaves the cart, the tip and the payment method as they were', async () => {
+        signIn();
+        await confirmWithRedBullAndWater();
+
+        await answerOutOfStock([121]);
+
+        expect(cartLabels()).toEqual(['Red Bull', 'Agua 600cc']);
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+        expect(button('Mercado Pago').getAttribute('aria-pressed')).toBe('true');
+        expect(root().querySelector('[role="alertdialog"]')).toBeNull();
+        expect(saved()).toMatchObject({ status: 'editing', sending: null });
+      });
+
+      it('a 409 says what ran out, as an alert, and is not read as a closed event', async () => {
+        await confirmWithRedBullAndWater();
+
+        await answerOutOfStock([121]);
+
+        expect(toast()?.textContent).toContain('Se acabó: Red Bull');
+        expect(toast()?.getAttribute('role')).toBe('alert');
+        expect(toast()?.classList.contains('alert')).toBe(true);
+        expect(text()).not.toContain(EVENT_CLOSED_MESSAGE);
+        httpTesting.expectNone('/api/events/current');
+        expect(root().querySelector('app-pending-sale-notice')).toBeNull();
+      });
+
+      it('a 409 updates the grid with everything that is out', async () => {
+        await confirmWithRedBullAndWater();
+
+        await answerOutOfStock([121, 11, 12]);
+
+        expect(grey()).toEqual(['Cerveza', 'Red Bull']);
+      });
+
+      it('the line goes grey, without "+", and can still be taken out with "−"', async () => {
+        await confirmWithRedBullAndWater();
+
+        await answerOutOfStock([121]);
+
+        expect(line('Red Bull').classList.contains('out-of-stock')).toBe(true);
+        expect(line('Red Bull').textContent).toContain('Agotado');
+        expect(line('Red Bull').querySelector('[aria-label="Agregar uno de Red Bull"]')).toBeNull();
+        expect(line('Agua 600cc').classList.contains('out-of-stock')).toBe(false);
+
+        await tap(
+          line('Red Bull').querySelector<HTMLElement>('[aria-label="Quitar uno de Red Bull"]')!,
+        );
+
+        expect(cartLabels()).toEqual(['Agua 600cc']);
+      });
+
+      it('blocks "Confirmar venta" while the line is there, naming it, and frees it after', async () => {
+        await confirmWithRedBullAndWater();
+        await answerOutOfStock([121]);
+
+        expect(confirmButton().disabled).toBe(true);
+        expect(text()).toContain('Agotado: Red Bull. Quítalo para vender.');
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectNone('/api/sales');
+
+        await tap(root().querySelector<HTMLElement>('[aria-label="Quitar uno de Red Bull"]')!);
+
+        expect(confirmButton().disabled).toBe(false);
+      });
+
+      it('blocks it too when a reload marks a line before confirming', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+        expect(confirmButton().disabled).toBe(false);
+
+        document.dispatchEvent(new Event('visibilitychange'));
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+        httpTesting.expectOne('/api/products').flush(MARKED_MENU);
+        await fixture.whenStable();
+
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(line('Red Bull').classList.contains('out-of-stock')).toBe(true);
+        expect(confirmButton().disabled).toBe(true);
+      });
+
+      it('opens a collapsed cart and scrolls to the line that went grey', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+        await tap(root().querySelector<HTMLElement>('.toggle')!);
+        expect(root().querySelector('.lines')).toBeNull();
+        scrollIntoView.mockClear();
+
+        confirmButton().click();
+        TestBed.tick();
+        await answerOutOfStock([121]);
+
+        expect(root().querySelector('.lines')).not.toBeNull();
+        expect(scrollIntoView).toHaveBeenCalled();
+      });
+
+      it('does not open the cart again once the cashier collapsed it', async () => {
+        await confirmWithRedBullAndWater();
+        await answerOutOfStock([121]);
+        await tap(root().querySelector<HTMLElement>('.toggle')!);
+
+        await tap(productButton('Agua 600cc'));
+
+        expect(root().querySelector('.lines')).toBeNull();
+      });
+
+      it('a saved cart comes back with the line in grey, not dropped', async () => {
+        signIn();
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('$1.000'));
+
+        await reload(OPEN_EVENT, MARKED_MENU);
+
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(line('Red Bull').classList.contains('out-of-stock')).toBe(true);
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+        await tap(button('Efectivo'));
+        expect(confirmButton().disabled).toBe(true);
+      });
+
+      it('"Deshacer" brings a grey line back in grey', async () => {
+        await confirmWithRedBullAndWater();
+        await answerOutOfStock([121]);
+
+        await tap(button('Vaciar'));
+        await tap(button('Deshacer'));
+
+        expect(cartLabels()).toEqual(['Red Bull', 'Agua 600cc']);
+        expect(confirmButton().disabled).toBe(true);
+      });
+
+      it('names every line in the hint', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+
+        await answerOutOfStock([121, 131]);
+
+        expect(text()).toContain('Agotado: Red Bull, Agua 600cc. Quítalos para vender.');
+      });
+    });
+
+    describe('the «Agotados» sheet', () => {
+      const MARK_URL = '/api/products/12/variants/121/out-of-stock';
+      const RESTOCK_URL = '/api/products/12/variants/121/restock';
+
+      function sheet(): HTMLElement | null {
+        return root().querySelector('app-stock-sheet');
+      }
+
+      function row(name: string): HTMLButtonElement {
+        const found = buttons(sheet()!).find(
+          (candidate) => candidate.querySelector('.name')?.textContent?.trim() === name,
+        );
+        if (!found) {
+          throw new Error(`No row "${name}"`);
+        }
+        return found;
+      }
+
+      /** Opens it and answers the reload it asks for. */
+      async function openSheet(menu: ProductResponse[] = MENU): Promise<void> {
+        await tap(button('Agotados'));
+        httpTesting.expectOne('/api/products').flush(menu);
+        await fixture.whenStable();
+      }
+
+      it('is offered only with an open event', async () => {
+        await setup(null);
+
+        expect(text()).not.toContain('Agotados');
+      });
+
+      it('lists every variant, with the name of the product, in the order of the grid', async () => {
+        await setup();
+        await openSheet();
+
+        const names = Array.from(sheet()!.querySelectorAll('.row .name')).map((name) =>
+          name.textContent?.trim(),
+        );
+        expect(names).toEqual([
+          'Cerveza Normal',
+          'Cerveza 0,0',
+          'Jack Daniels Original',
+          'Jack Daniels Manzana',
+          'Red Bull',
+          'Agua 600cc',
+        ]);
+      });
+
+      it('asks for the menu on opening, and shows the fresh marks with their Chilean time', async () => {
+        await setup();
+
+        await openSheet(MARKED_MENU);
+
+        expect(row('Red Bull').getAttribute('aria-checked')).toBe('true');
+        expect(row('Red Bull').textContent).toContain('Agotado desde 03:30');
+        expect(row('Agua 600cc').getAttribute('aria-checked')).toBe('false');
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('shows what it has if the reload fails', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await tap(button('Agotados'));
+        httpTesting.expectOne('/api/products').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        expect(row('Red Bull').textContent).toContain('Agotado desde 03:30');
+      });
+
+      it('shows no time for a mark that came with a sale', async () => {
+        await setup();
+        await sell([121]);
+
+        await tap(button('Agotados'));
+
+        expect(row('Red Bull').textContent).toContain('Agotado');
+        expect(row('Red Bull').textContent).not.toContain('desde');
+        httpTesting.expectOne('/api/products').flush(MENU);
+      });
+
+      it('keeps the time already known when a sale brings only ids', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await sell([121]);
+
+        await tap(button('Agotados'));
+
+        expect(row('Red Bull').textContent).toContain('Agotado desde 03:30');
+        httpTesting.expectOne('/api/products').flush(MARKED_MENU);
+      });
+
+      it('marks with one tap, without asking, and the grid follows', async () => {
+        await setup();
+        await openSheet();
+
+        await tap(row('Red Bull'));
+        expect(row('Red Bull').textContent).toContain('Guardando');
+        const request = httpTesting.expectOne(MARK_URL);
+        expect(request.request.method).toBe('POST');
+        request.flush([{ variantId: 121, since: SINCE }]);
+        await fixture.whenStable();
+
+        expect(row('Red Bull').getAttribute('aria-checked')).toBe('true');
+        expect(row('Red Bull').textContent).toContain('Agotado desde 03:30');
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('unmarks with another tap', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await openSheet(MARKED_MENU);
+
+        await tap(row('Red Bull'));
+        httpTesting.expectOne(RESTOCK_URL).flush([{ variantId: 92, since: SINCE }]);
+        await fixture.whenStable();
+
+        expect(row('Red Bull').getAttribute('aria-checked')).toBe('false');
+        expect(grey()).toEqual([]);
+      });
+
+      it('sends one request at a time', async () => {
+        await setup();
+        await openSheet();
+
+        await tap(row('Red Bull'));
+        await tap(row('Agua 600cc'));
+
+        httpTesting.expectOne(MARK_URL).flush([]);
+        httpTesting.expectNone('/api/products/13/variants/131/out-of-stock');
+      });
+
+      it('stays open until the mark is answered', async () => {
+        await setup();
+        await openSheet();
+
+        await tap(row('Red Bull'));
+        await tap(root().querySelector<HTMLElement>('app-stock-sheet .backdrop')!);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await fixture.whenStable();
+
+        expect(sheet()).not.toBeNull();
+        httpTesting.expectOne(MARK_URL).flush([]);
+        await fixture.whenStable();
+
+        await tap(button('Cerrar'));
+        expect(sheet()).toBeNull();
+      });
+
+      it('marking drops the reload in flight: it could undo the mark', async () => {
+        await setup();
+        await tap(button('Agotados'));
+        const reload = httpTesting.expectOne('/api/products');
+
+        await tap(row('Red Bull'));
+
+        expect(reload.cancelled).toBe(true);
+        httpTesting.expectOne(MARK_URL).flush([{ variantId: 121, since: SINCE }]);
+      });
+
+      it('does not reload while a mark is being sent', async () => {
+        await setup();
+        await openSheet();
+        await tap(row('Red Bull'));
+
+        document.dispatchEvent(new Event('visibilitychange'));
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+
+        httpTesting.expectNone('/api/products');
+        httpTesting.expectOne(MARK_URL).flush([]);
+      });
+
+      it('shows the error and lets the cashier retry', async () => {
+        await setup();
+        await openSheet();
+
+        await tap(row('Red Bull'));
+        httpTesting.expectOne(MARK_URL).error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        expect(sheet()!.querySelector('[role="alert"]')?.textContent).toContain(
+          NO_CONNECTION_MESSAGE,
+        );
+        expect(row('Red Bull').getAttribute('aria-checked')).toBe('false');
+
+        await tap(row('Red Bull'));
+        httpTesting.expectOne(MARK_URL).flush([{ variantId: 121, since: SINCE }]);
+        await fixture.whenStable();
+
+        expect(sheet()!.querySelector('[role="alert"]')).toBeNull();
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('rechecks the event on a 409, showing why', async () => {
+        await setup();
+        await openSheet();
+
+        await tap(row('Red Bull'));
+        httpTesting.expectOne(MARK_URL).flush(
+          {
+            status: 409,
+            detail: 'No hay un evento abierto: marcar agotado es solo para la fiesta.',
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        await fixture.whenStable();
+
+        expect(sheet()!.querySelector('[role="alert"]')?.textContent).toContain(
+          'agotado es solo para la fiesta',
+        );
+        httpTesting.expectOne('/api/events/current').flush(OPEN_EVENT);
+      });
+
+      it('cannot be opened with a sale that may be registered', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        expect(button('Agotados').disabled).toBe(true);
+      });
+
+      it('gives up after the timeout and says there is no connection', async () => {
+        await setup();
+        await openSheet();
+        vi.useFakeTimers();
+        try {
+          row('Red Bull').click();
+          TestBed.tick();
+          const request = httpTesting.expectOne(MARK_URL);
+
+          vi.advanceTimersByTime(STOCK_REQUEST_TIMEOUT_MS);
+          TestBed.tick();
+
+          expect(request.cancelled).toBe(true);
+          expect(sheet()!.querySelector('[role="alert"]')?.textContent).toContain(
+            NO_CONNECTION_MESSAGE,
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    describe('«¿Llegó más?»', () => {
+      const RESTOCK_URL = '/api/products/12/variants/121/restock';
+
+      function sheet(): HTMLElement | null {
+        return root().querySelector('app-restock-sheet');
+      }
+
+      it('tapping a grey button offers it, without unmarking yet', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await tap(productButton('Red Bull'));
+
+        expect(sheet()?.textContent).toContain('Red Bull está agotado');
+        expect(sheet()?.textContent).toContain('¿Llegó más?');
+        httpTesting.expectNone(RESTOCK_URL);
+        expect(document.activeElement?.textContent?.trim()).toBe('Cancelar');
+        await tap(button('Cancelar'));
+        expect(sheet()).toBeNull();
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('unmarks it for this phone at once, and does not add it to the cart', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await tap(productButton('Red Bull'));
+
+        await tap(button('Sí, llegó más'));
+        const request = httpTesting.expectOne(RESTOCK_URL);
+        expect(request.request.method).toBe('POST');
+        request.flush([{ variantId: 92, since: SINCE }]);
+        await fixture.whenStable();
+
+        expect(sheet()).toBeNull();
+        expect(grey()).toEqual([]);
+        expect(cartLabels()).toEqual([]);
+
+        await tap(productButton('Red Bull'));
+        expect(cartLabels()).toEqual(['Red Bull']);
+      });
+
+      it('takes the grey off a cart line, freeing "Confirmar venta"', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush(
+          {
+            status: 409,
+            code: 'OUT_OF_STOCK',
+            detail: 'Se acabó: Red Bull',
+            outOfStockVariantIds: [121],
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        await fixture.whenStable();
+        expect(confirmButton().disabled).toBe(true);
+
+        await tap(productButton('Red Bull'));
+        await tap(button('Sí, llegó más'));
+        httpTesting.expectOne(RESTOCK_URL).flush([]);
+        await fixture.whenStable();
+
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(confirmButton().disabled).toBe(false);
+      });
+
+      it('from the variant picker, closing it', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await tap(productButton('Jack Daniels'));
+
+        await tap(button('Manzana Agotado'));
+
+        expect(root().querySelector('app-variant-picker')).toBeNull();
+        expect(sheet()?.textContent).toContain('Jack Daniels Manzana está agotado');
+        await tap(button('Cancelar'));
+      });
+
+      it('stays open with the error if it fails', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await tap(productButton('Red Bull'));
+
+        await tap(button('Sí, llegó más'));
+        httpTesting.expectOne(RESTOCK_URL).error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        expect(sheet()?.querySelector('[role="alert"]')?.textContent).toContain(
+          NO_CONNECTION_MESSAGE,
+        );
+        expect(grey()).toEqual(['Red Bull']);
+        await tap(button('Cancelar'));
+      });
+
+      it('is not offered with a sale that may be registered', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').flush(
+          {
+            status: 409,
+            code: 'OUT_OF_STOCK',
+            detail: 'Se acabó: Red Bull',
+            outOfStockVariantIds: [121],
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+        await fixture.whenStable();
+        await tap(button('Mercado Pago'));
+        await tap(root().querySelector<HTMLElement>('[aria-label="Agregar uno de Agua 600cc"]')!);
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        await tap(productButton('Red Bull'));
+
+        expect(sheet()).toBeNull();
+      });
+    });
+
+    describe('reloads outside the foreground', () => {
+      it('asks for the menu once the pending sale notice is answered: it skipped the reloads', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        await tap(button('No está: seguir'));
+
+        httpTesting.expectOne('/api/products').flush(MARKED_MENU);
+        await fixture.whenStable();
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('also with "Ya está: vaciar"', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        await tap(button('Ya está: vaciar'));
+
+        httpTesting.expectOne('/api/products').flush(MARKED_MENU);
+        await fixture.whenStable();
+        expect(grey()).toEqual(['Red Bull']);
+      });
+    });
+
+    describe('with a sale that may be registered', () => {
+      function backToTheForeground(): void {
+        document.dispatchEvent(new Event('visibilitychange'));
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+      }
+
+      it('does not reload the marks while it is being sent', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+
+        backToTheForeground();
+
+        httpTesting.expectNone('/api/products');
+        httpTesting
+          .expectOne('/api/sales')
+          .flush(saleResponse({ subtotal: 3000, tipAmount: 0, amountToCharge: 3000 }));
+      });
+
+      it('does not reload the marks while it is pending', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        backToTheForeground();
+
+        httpTesting.expectNone('/api/products');
+        expect(grey()).toEqual([]);
       });
     });
   });
@@ -1881,6 +2699,7 @@ describe('SalePage', () => {
         await reloadDuringTheSale();
 
         await tap(button('Ya está: vaciar'));
+        httpTesting.expectOne('/api/products').flush(MENU);
 
         expect(pendingNotice()).toBeNull();
         expect(cartLabels()).toEqual([]);
@@ -1892,6 +2711,7 @@ describe('SalePage', () => {
         await reloadDuringTheSale();
 
         await tap(button('No está: seguir'));
+        httpTesting.expectOne('/api/products').flush(MENU);
 
         expect(pendingNotice()).toBeNull();
         expect(saved()).toMatchObject({ status: 'editing', sending: null });
@@ -1928,6 +2748,7 @@ describe('SalePage', () => {
         await reloadDuringTheSale();
 
         await tap(button('No está: seguir'));
+        httpTesting.expectOne('/api/products').flush(MENU);
         expect(button('Vaciar').disabled).toBe(false);
         await tap(button('Vaciar'));
 
@@ -1939,6 +2760,7 @@ describe('SalePage', () => {
         await reloadDuringTheSale();
 
         await tap(button('Ya está: vaciar'));
+        httpTesting.expectOne('/api/products').flush(MENU);
         await tap(productButton('Red Bull'));
 
         expect(button('Vaciar').disabled).toBe(false);

@@ -154,7 +154,7 @@ Hay dos usuarios fijos, compartidos por quienes cumplen ese rol:
 
 | Usuario | Puede |
 |---|---|
-| `barra` | vender, anular, ver últimas ventas y totales |
+| `barra` | vender, anular, marcar agotados, ver últimas ventas y totales |
 | `admin` | todo lo de `barra`, más abrir y cerrar eventos, descargar el Excel del evento, agregar, editar, desactivar y reactivar productos y variantes de la carta (**⚙️ Administración**) y **Estado del sistema** |
 
 Ninguna clave ni hash vive en el repositorio: solo en las variables de Render.
@@ -295,7 +295,7 @@ El producto nuevo queda al final de la grilla. Los otros teléfonos ven los camb
 **Desactivar es para antes de la fiesta.** Se usa cuando ya se sabe qué llega de la concesión. Nada se borra: las ventas hechas, Totales y el Excel no cambian.
 
 - **Desactivar producto** está al final de **Editar**, y **Desactivar** cada variante está en la lista de variantes de esa pantalla. Con cambios sin guardar quedan bloqueados.
-- Con un evento abierto no se puede: aparece deshabilitado con «Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.», y el backend responde 409.
+- Con un evento abierto no se puede: aparece deshabilitado con «Hay un evento abierto. Si se acabó esta noche, márcalo agotado.», y el backend responde 409.
 - La última variante activa no se desactiva: hay que desactivar el producto. Un producto sin variantes solo tiene **Desactivar producto**.
 - **Reactivar** está en **Desactivados**, y para las variantes también en **Editar**. Se puede con el evento abierto. Lo reactivado vuelve a su lugar en la grilla con el precio que tenía.
 - Producto y variantes son independientes: al reactivar Jack Daniels, Honey sigue desactivada si lo estaba. Las variantes de un producto desactivado esperan a que se reactive.
@@ -303,6 +303,19 @@ El producto nuevo queda al final de la grilla. Los otros teléfonos ven los camb
 - Desactivar un producto corre un lugar los botones siguientes de la grilla.
 
 Si un teléfono intenta vender algo que ya no está en la carta, la venta no se registra y la cajera ve ««Jack Daniels Honey» ya no está en la carta.». El carrito no cambia: lo quita con **−**.
+
+### Marcar agotados (barra)
+
+Es para lo que **se acaba durante la noche** y puede volver si llega más. Lo marca la cajera, sin pasar por el admin. No es desactivar: no cambia la carta, ni Totales, ni el Excel, ni las ventas ya hechas. La app no calcula stock: lo sabe la barra.
+
+- **Marcar:** al final de la grilla de Venta, **Agotados**. Se abre la lista con cada producto y variante, y un toque marca o desmarca al instante, sin confirmación. Muestra desde qué hora está marcado cada uno (hora de Chile). Tropical Gin y Gin + Bebida son productos distintos: se marcan por separado.
+- **En la grilla:** el botón queda en su lugar, con rayas y «Agotado» en vez del precio. Si se acaba una sola variante (Jack Manzana), el botón sigue normal y la variante aparece en gris al elegirla. Si se acaban todas, el botón también queda gris.
+- **Llegó más:** tocar el botón gris pregunta **¿Llegó más?** y ofrece **Sí, llegó más**. Después se agrega con un toque más.
+- **Carrito:** si una línea queda agotada no se quita sola. Queda en gris, sin **+**, y **Confirmar venta** se bloquea hasta quitarla con **−** o quitarle la marca. La cajera decide con el cliente.
+- **Otros teléfonos:** se enteran con su siguiente venta, al volver a la app o al entrar a Venta, sin consultas adicionales. Si uno vende algo marcado antes de enterarse, la venta no se registra y ve «Se acabó: Tropical Gin». Como se confirma antes de cobrar, todavía no se ha cobrado nada.
+- Las marcas son de cada evento: el evento siguiente parte sin ninguna.
+
+**Antes de la fiesta**, tocar **Actualizar** en todos los teléfonos después de un deploy: un teléfono con la versión anterior no muestra el gris, y si intenta vender algo marcado ve «El evento está cerrado», aunque no lo esté. El carrito no se pierde. Los previews de PR usan el backend de producción, así que marcar agotados no funciona ahí hasta desplegarlo: se prueba en local.
 
 ### Límites del plan gratis
 

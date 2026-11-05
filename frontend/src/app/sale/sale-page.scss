@@ -92,6 +92,17 @@
   text-align: center;
 }
 
+// Quiet on purpose: it is used once or twice a night, and it does not look like a product.
+.mark-stock {
+  width: 100%;
+  margin-top: 0.75rem;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .checkout {
   display: flex;
   flex-direction: column;
@@ -210,6 +221,13 @@
     background: transparent;
     color: inherit;
   }
+}
+
+// "Se acabó: Tropical Gin": bad news, not in green. Up here, not as a banner in the checkout, whose height
+// with "Muy grande" has no room left and would push "Confirmar venta" under its inner scroll.
+.toast.alert {
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 // "No se pudo cargar el evento. {detalle} [Reintentar]": its own full-width row under the header, so the

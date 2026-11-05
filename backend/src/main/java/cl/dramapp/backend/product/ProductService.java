@@ -3,7 +3,9 @@ package cl.dramapp.backend.product;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -24,24 +26,32 @@ public class ProductService {
 
 	private final EventRepository eventRepository;
 
+	private final StockOutRepository stockOutRepository;
+
 	public ProductService(ProductRepository productRepository, ProductVariantRepository productVariantRepository,
-			EventRepository eventRepository) {
+			EventRepository eventRepository, StockOutRepository stockOutRepository) {
 		this.productRepository = productRepository;
 		this.productVariantRepository = productVariantRepository;
 		this.eventRepository = eventRepository;
+		this.stockOutRepository = stockOutRepository;
 	}
 
 	/**
 	 * Active products in menu order, each with only its active variants in order.
-	 * Products without active variants are left out, since they cannot be sold.
+	 * Products without active variants are left out, since they cannot be sold. What is «Agotado» in the open event
+	 * stays on the menu with its mark: the button keeps its place.
 	 */
 	@Transactional(readOnly = true)
 	public List<ProductResponse> findActiveMenu() {
+		Map<Long, Instant> outOfStockSince = stockOutRepository.findCurrent()
+			.stream()
+			.collect(toMap(StockOutResponse::variantId, StockOutResponse::since));
+
 		Map<Long, List<ProductVariantResponse>> variantsByProductId = productVariantRepository
 			.findByActiveTrueAndProductActiveTrueOrderBySortOrderAscIdAsc()
 			.stream()
-			.collect(groupingBy(variant -> variant.getProduct().getId(),
-					mapping(ProductVariantResponse::from, toList())));
+			.collect(groupingBy(variant -> variant.getProduct().getId(), mapping(
+					variant -> ProductVariantResponse.from(variant, outOfStockSince.get(variant.getId())), toList())));
 
 		return productRepository.findByActiveTrueOrderBySortOrderAscIdAsc()
 			.stream()
@@ -216,7 +226,7 @@ public class ProductService {
 			.orElseThrow(() -> new ProductNotFoundException(productId));
 	}
 
-	private static ProductVariant findVariant(Product product, Long variantId) {
+	static ProductVariant findVariant(Product product, Long variantId) {
 		return product.getVariants().stream()
 			.filter(candidate -> candidate.getId().equals(variantId))
 			.findFirst()

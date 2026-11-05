@@ -28,7 +28,7 @@ public class SaleController {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	public SaleResponse register(@Valid @RequestBody RegisterSaleRequest request) {
+	public RegisteredSaleResponse register(@Valid @RequestBody RegisterSaleRequest request) {
 		return saleService.register(request);
 	}
 

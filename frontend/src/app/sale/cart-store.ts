@@ -53,7 +53,7 @@ export class CartStore {
 
   private readonly lastAddedState = signal<AddedLine | null>(null);
 
-  /** The line touched by the latest add(), so the cart can scroll to it. */
+  /** The line touched by the latest add() or reveal(), so the cart can scroll to it. */
   readonly lastAdded = this.lastAddedState.asReadonly();
 
   readonly isEmpty = computed(() => this.linesState().length === 0);
@@ -120,7 +120,7 @@ export class CartStore {
   /**
    * Admin edited the menu (DRAMA-28): the lines take the current prices, promo and names, so the total on
    * screen is what the backend will charge. Lines no longer on the menu are not removed: the menu is deactivated
-   * before the party, and what runs out during the night is handled with «Sin stock» (DRAMA-51). Only sets the
+   * before the party, and what runs out during the night is handled with «Agotado» (DRAMA-51). Only sets the
    * lines if one changed, so it can run on every change of them.
    */
   syncMenu(menu: readonly ProductResponse[]): void {
@@ -147,6 +147,11 @@ export class CartStore {
       this.save();
     }
     this.lastAddedState.set({ variantId: variant.id });
+  }
+
+  /** Scrolls the cart to a line, with "Muy grande" it may show a single one. Changes nothing else. */
+  reveal(variantId: number): void {
+    this.lastAddedState.set({ variantId });
   }
 
   increment(variantId: number): void {

@@ -20,9 +20,8 @@ export const NO_CHANGES_MESSAGE = 'No cambiaste nada.';
 export const RENAME_WARNING =
   'El nombre nuevo también se verá en ventas pasadas y eventos cerrados. Si tiene fila propia en «Para BARRA», sus ventas saldrán al final del Excel.';
 
-/** The backend's 409: what runs out during the night is marked «Sin stock» instead. */
-export const EVENT_OPEN_MESSAGE =
-  'Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.';
+/** The backend's 409: what runs out during the night is marked «Agotado» instead. */
+export const EVENT_OPEN_MESSAGE = 'Hay un evento abierto. Si se acabó esta noche, márcalo agotado.';
 
 export const DEACTIVATE_WARNING =
   'Sale de Venta y los botones siguientes se corren un lugar. Las ventas hechas, Totales y el Excel no cambian.';

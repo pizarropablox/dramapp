@@ -15,7 +15,7 @@ import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
-import { ProductResponse, ProductVariantResponse } from '../product/product';
+import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { CreateRefundRequest, RefundResponse } from '../refund/refund';
 import { RefundDialog } from '../refund/refund-dialog';
@@ -24,6 +24,7 @@ import { VoidRefundDialog } from '../refund/void-refund-dialog';
 import { errorMessage } from '../shared/api-error';
 import { formatClp } from '../shared/clp';
 import { CartPanel } from './cart-panel';
+import { lineLabel } from './cart-storage';
 import { CartStore, EmptiedCart } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
 import { PendingSaleNotice } from './pending-sale-notice';
@@ -33,6 +34,17 @@ import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
 import {
+  NOTHING_OUT_OF_STOCK,
+  OutOfStock,
+  outOfStockConflict,
+  outOfStockFromIds,
+  outOfStockFromMarks,
+  outOfStockFromMenu,
+} from './stock';
+import { RestockSheet } from './restock-sheet';
+import { StockSheet } from './stock-sheet';
+import {
+  outOfStockHint,
   priceChangedNotice,
   REFUND_VOIDED_NOTICE,
   refundNotice,
@@ -43,7 +55,10 @@ import { TipChoice, TipSelector } from './tip-selector';
 import { VariantPicker } from './variant-picker';
 import { VoidSaleDialog } from './void-sale-dialog';
 
-/** POST /api/sales only answers 409 when there is no open event: admin closed it from another phone. */
+/**
+ * POST /api/sales answers 409 when there is no open event (admin closed it from another phone) or when a line is
+ * «Agotado», which comes with its own code: see outOfStockConflict.
+ */
 export const EVENT_CLOSED_MESSAGE =
   'El evento está cerrado: esta venta no se registró. El carrito sigue aquí.';
 
@@ -81,8 +96,10 @@ function normalize(text: string): string {
     ProductGrid,
     RecentSalesSheet,
     RefundDialog,
+    RestockSheet,
     SaleConfirmation,
     SessionExpiryNotice,
+    StockSheet,
     TipSelector,
     VariantPicker,
     VoidRefundDialog,
@@ -116,6 +133,31 @@ export class SalePage {
     const query = normalize(this.search());
     return query ? products.filter((product) => normalize(product.name).includes(query)) : products;
   });
+
+  /**
+   * What is «Agotado» (DRAMA-51). Comes with the menu, so it follows every guarded reload, and is replaced by what
+   * the sale and marking answers bring (see setOutOfStock).
+   */
+  protected readonly outOfStock = linkedSignal<OutOfStock>(() =>
+    this.menu.hasValue() ? outOfStockFromMenu(this.menu.value()) : NOTHING_OUT_OF_STOCK,
+  );
+
+  /** The sheet to mark what ran out. It asks for the menu on opening, so the marks and their times are fresh. */
+  protected readonly stockSheetOpen = signal(false);
+  /** The grey item tapped, while «¿Llegó más?» is asked. */
+  protected readonly restocking = signal<{
+    product: ProductResponse;
+    variant: ProductVariantResponse;
+  } | null>(null);
+  /** A mark is being sent: a reload answered now could be older than its answer. */
+  private stockSaving = false;
+
+  /** They stay in the cart, in grey, and block confirming until the cashier takes them out. */
+  protected readonly outOfStockLines = computed(() =>
+    this.cart.lines().filter((line) => this.outOfStock().has(line.variant.id)),
+  );
+  /** Those already shown to the cashier: only a line going grey opens the cart and scrolls to it. */
+  private revealedOutOfStock: ReadonlySet<number> = new Set();
 
   /** Expanded by default whenever the cart gets products; the cashier can collapse it. */
   protected readonly cartExpanded = linkedSignal(() => !this.cart.isEmpty());
@@ -168,6 +210,8 @@ export class SalePage {
 
   /** "Venta anulada.", "Devolución registrada…": over everything, until closed or the next action. */
   protected readonly notice = signal<string | null>(null);
+  /** "Se acabó: Tropical Gin" is not good news. */
+  protected readonly noticeIsAlert = signal(false);
 
   protected readonly blockReason = computed(() => {
     if (!this.openEvent()) {
@@ -178,6 +222,9 @@ export class SalePage {
     }
     if (this.cart.isEmpty()) {
       return 'Agrega productos para vender.';
+    }
+    if (this.outOfStockLines().length > 0) {
+      return outOfStockHint(this.outOfStockLines().map(lineLabel));
     }
     if (this.tipAmount() > MAX_TIP) {
       return `La propina no puede superar ${formatClp(MAX_TIP)}.`;
@@ -237,6 +284,35 @@ export class SalePage {
         }
       });
     });
+
+    // A new event starts without marks: a phone left on this screen between two parties must not keep the old grey.
+    let knownEventId: number | null | undefined;
+    effect(() => {
+      if (!this.currentEvent.answered()) {
+        return;
+      }
+      const eventId = this.openEvent()?.id ?? null;
+      untracked(() => {
+        if (knownEventId !== undefined && eventId !== null && eventId !== knownEventId) {
+          this.refreshMenu();
+        }
+        knownEventId = eventId;
+      });
+    });
+
+    // A line going grey may be out of view: the cart can be collapsed, and "Muy grande" may show a single row.
+    effect(() => {
+      const lines = this.outOfStockLines();
+      untracked(() => {
+        const seen = this.revealedOutOfStock;
+        this.revealedOutOfStock = new Set(lines.map((line) => line.variant.id));
+        const fresh = lines.find((line) => !seen.has(line.variant.id));
+        if (fresh) {
+          this.cartExpanded.set(true);
+          this.cart.reveal(fresh.variant.id);
+        }
+      });
+    });
   }
 
   /**
@@ -249,6 +325,7 @@ export class SalePage {
     if (
       this.document.hidden ||
       this.saleMayBeRegistered() ||
+      this.stockSaving ||
       !this.menu.hasValue() ||
       (this.menuRefresh && !this.menuRefresh.closed)
     ) {
@@ -268,10 +345,46 @@ export class SalePage {
     return this.submitting() || this.cart.pending() !== null;
   }
 
+  /** Like a reload, never while a sale may be registered. Only colors change: not the cart, not the tip. */
+  private setOutOfStock(marks: OutOfStock): void {
+    if (!this.saleMayBeRegistered()) {
+      this.outOfStock.set(marks);
+    }
+  }
+
+  protected openStockSheet(): void {
+    if (this.saleMayBeRegistered()) {
+      return;
+    }
+    this.stockSheetOpen.set(true);
+    this.refreshMenu();
+  }
+
+  protected onStockSaving(saving: boolean): void {
+    this.stockSaving = saving;
+    if (saving) {
+      this.menuRefresh?.unsubscribe();
+    }
+  }
+
+  protected onMarksChanged(marks: StockOutResponse[]): void {
+    this.setOutOfStock(outOfStockFromMarks(marks));
+  }
+
+  protected onRestocked(marks: StockOutResponse[]): void {
+    this.onMarksChanged(marks);
+    this.restocking.set(null);
+  }
+
   /** autoCloseMs null: until closed or the next action. */
-  protected showNotice(message: string | null, autoCloseMs: number | null = null): void {
+  protected showNotice(
+    message: string | null,
+    autoCloseMs: number | null = null,
+    alert = false,
+  ): void {
     clearTimeout(this.noticeTimer);
     this.notice.set(message);
+    this.noticeIsAlert.set(alert);
     if (message !== null && autoCloseMs !== null) {
       this.noticeTimer = setTimeout(() => this.notice.set(null), autoCloseMs);
     }
@@ -311,12 +424,14 @@ export class SalePage {
     this.cart.clear();
     this.paymentMethod.set(null);
     this.saleError.set(null);
+    this.refreshMenu(); // Skipped while the notice was up.
   }
 
   /** "No está: seguir": it can be confirmed again. */
   protected pendingNotRegistered(): void {
     this.cart.markNotSent();
     this.saleError.set(null);
+    this.refreshMenu(); // Skipped while the notice was up.
   }
 
   protected onSearch(event: Event): void {
@@ -325,17 +440,27 @@ export class SalePage {
 
   protected selectProduct(product: ProductResponse): void {
     if (product.variants.length === 1) {
-      this.forgetEmptied();
-      this.cart.add(product, product.variants[0]);
+      this.addToCart(product, product.variants[0]);
     } else {
       this.pickingProduct.set(product);
     }
   }
 
   protected pickVariant(product: ProductResponse, variant: ProductVariantResponse): void {
+    this.addToCart(product, variant);
+    this.pickingProduct.set(null);
+  }
+
+  /** What is «Agotado» cannot be added: «¿Llegó más?» is offered instead. */
+  private addToCart(product: ProductResponse, variant: ProductVariantResponse): void {
+    if (this.outOfStock().has(variant.id)) {
+      if (!this.saleMayBeRegistered()) {
+        this.restocking.set({ product, variant });
+      }
+      return;
+    }
     this.forgetEmptied();
     this.cart.add(product, variant);
-    this.pickingProduct.set(null);
   }
 
   protected confirm(): void {
@@ -350,6 +475,8 @@ export class SalePage {
     };
     this.submitting.set(true);
     this.saleError.set(null);
+    // Its answer would be older than the sale's, and its marks would undo the newer ones.
+    this.menuRefresh?.unsubscribe();
     // Saved before sending: if the page reloads or the answer never comes, it may have been registered.
     this.cart.markSending({
       paymentMethod,
@@ -367,6 +494,10 @@ export class SalePage {
           this.cart.clear();
           this.paymentMethod.set(null);
           this.submitting.set(false);
+          // How this phone learns what another one marked, without asking for anything more.
+          if (sale.outOfStockVariantIds) {
+            this.setOutOfStock(outOfStockFromIds(this.outOfStock(), sale.outOfStockVariantIds));
+          }
         },
         error: (error: unknown) => {
           this.submitting.set(false);
@@ -379,7 +510,12 @@ export class SalePage {
             return;
           }
           this.cart.markNotSent();
-          if (error.status === HttpStatusCode.Conflict) {
+          const outOfStockIds = outOfStockConflict(error);
+          if (outOfStockIds) {
+            // Back to the cart with nothing touched: the lines go grey and the cashier decides.
+            this.setOutOfStock(outOfStockFromIds(this.outOfStock(), outOfStockIds));
+            this.showNotice(errorMessage(error), null, true);
+          } else if (error.status === HttpStatusCode.Conflict) {
             this.saleError.set(EVENT_CLOSED_MESSAGE);
             this.currentEvent.refresh();
           } else {

@@ -24,6 +24,7 @@ import cl.dramapp.backend.product.CreateProductRequest;
 import cl.dramapp.backend.product.ProductRepository;
 import cl.dramapp.backend.product.ProductService;
 import cl.dramapp.backend.product.ProductVariant;
+import cl.dramapp.backend.product.StockOutService;
 import cl.dramapp.backend.product.UpdateProductRequest;
 import cl.dramapp.backend.product.UpdateVariantRequest;
 import cl.dramapp.backend.refund.Refund;
@@ -59,6 +60,9 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private ProductService productService;
+
+	@Autowired
+	private StockOutService stockOutService;
 
 	private Event event(String name) {
 		return eventRepository.saveAndFlush(new Event(name, LocalDate.of(2026, 10, 31)));
@@ -227,6 +231,23 @@ class EventSummaryControllerTests extends PostgresIntegrationTest {
 
 		assertThat(after.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(before);
 		assertThat(after).bodyJson().extractingPath("$.products[*].productName").asArray().contains("Red Bull");
+	}
+
+	/** DRAMA-51: «Agotado» says what cannot be sold from now on; what was sold stays as it is. */
+	@Test
+	void markingWhatWasSoldOutOfStockChangesNothing() throws Exception {
+		Event event = eventWithSales();
+		entityManager.clear();
+		String before = summary(event.getId()).getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+		ProductVariant manzana = variant("Jack Daniels", "Manzana");
+		stockOutService.mark(manzana.getProduct().getId(), manzana.getId(), "barra");
+		entityManager.flush();
+		entityManager.clear();
+
+		var after = summary(event.getId());
+
+		assertThat(after.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(before);
 	}
 
 	/** DRAMA-29: a product added from ⚙️ Administración shows up in Totales like any other. */

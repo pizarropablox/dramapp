@@ -11,9 +11,9 @@ public class CannotDeactivateException extends ErrorResponseException {
 		super(HttpStatus.CONFLICT, problem(detail), null);
 	}
 
-	/** What runs out during the night is marked «Sin stock» instead (DRAMA-51). */
+	/** What runs out during the night is marked «Agotado» instead (DRAMA-51). */
 	static CannotDeactivateException eventOpen() {
-		return new CannotDeactivateException("Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.");
+		return new CannotDeactivateException("Hay un evento abierto. Si se acabó esta noche, márcalo agotado.");
 	}
 
 	static CannotDeactivateException lastActiveVariant(Product product) {

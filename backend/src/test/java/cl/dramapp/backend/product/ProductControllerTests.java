@@ -2,6 +2,8 @@ package cl.dramapp.backend.product;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.LocalDate;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +15,8 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.transaction.annotation.Transactional;
 
 import cl.dramapp.backend.PostgresIntegrationTest;
+import cl.dramapp.backend.event.Event;
+import cl.dramapp.backend.event.EventRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -25,6 +29,12 @@ class ProductControllerTests extends PostgresIntegrationTest {
 
 	@Autowired
 	private ProductRepository productRepository;
+
+	@Autowired
+	private EventRepository eventRepository;
+
+	@Autowired
+	private StockOutRepository stockOutRepository;
 
 	@Test
 	void listsTheTwelveActiveProductsInMenuOrder() {
@@ -87,6 +97,54 @@ class ProductControllerTests extends PostgresIntegrationTest {
 		assertThat(result).bodyJson().extractingPath("$[*].name").asArray()
 			.hasSize(12)
 			.doesNotContain("Test Whiskey");
+	}
+
+	private ProductVariant variant(String productName, String variantName) {
+		return productRepository.findAll().stream()
+			.filter(product -> product.getName().equals(productName))
+			.flatMap(product -> product.getVariants().stream())
+			.filter(variant -> variant.getName().equals(variantName))
+			.findFirst()
+			.orElseThrow();
+	}
+
+	private Event openEvent() {
+		return eventRepository.saveAndFlush(new Event("DRAMA Noviembre", LocalDate.of(2026, 11, 28)));
+	}
+
+	@Test
+	void nothingIsOutOfStockByDefault() {
+		openEvent();
+
+		var result = mvc.get().uri("/api/products").exchange();
+
+		assertThat(result).bodyJson().extractingPath("$[6].variants[0].outOfStockSince").isNull();
+	}
+
+	@Test
+	void aMarkedVariantStaysOnTheMenuWithItsTime() {
+		Event event = openEvent();
+		stockOutRepository.saveAndFlush(new StockOut(event, variant("Jack Daniels", "Manzana"), "barra"));
+
+		var result = mvc.get().uri("/api/products").exchange();
+
+		assertThat(result).bodyJson().extractingPath("$[*].name").asArray().hasSize(12);
+		assertThat(result).bodyJson().extractingPath("$[6].variants[*].name").asArray()
+			.containsExactly("Original", "Manzana");
+		assertThat(result).bodyJson().extractingPath("$[6].variants[0].outOfStockSince").isNull();
+		assertThat(result).bodyJson().extractingPath("$[6].variants[1].outOfStockSince").asString().isNotBlank();
+	}
+
+	@Test
+	void marksOfAClosedEventDoNotReachTheMenu() {
+		Event event = openEvent();
+		stockOutRepository.saveAndFlush(new StockOut(event, variant("Jack Daniels", "Manzana"), "barra"));
+		event.close();
+		eventRepository.saveAndFlush(event);
+
+		var result = mvc.get().uri("/api/products").exchange();
+
+		assertThat(result).bodyJson().extractingPath("$[6].variants[1].outOfStockSince").isNull();
 	}
 
 }

@@ -78,8 +78,21 @@
       <app-product-grid
         [products]="visibleProducts()"
         [unitsByProduct]="cart.unitsByProduct()"
+        [outOfStock]="outOfStock()"
         (selected)="selectProduct($event)"
       />
+    }
+    @if (openEvent() && menu.hasValue()) {
+      <!-- After the products and apart from them: during the peak a tap on the grid only adds to the cart. -->
+      <button
+        type="button"
+        class="mark-stock"
+        aria-haspopup="dialog"
+        [disabled]="submitting() || !!cart.pending()"
+        (click)="openStockSheet()"
+      >
+        Agotados
+      </button>
     }
   </main>
 
@@ -87,6 +100,7 @@
     <app-cart-panel
       [lines]="cart.lines()"
       [itemCount]="cart.itemCount()"
+      [outOfStock]="outOfStock()"
       [lastAdded]="cart.lastAdded()"
       [(expanded)]="cartExpanded"
       [undoable]="!!emptied()"
@@ -129,8 +143,31 @@
 @if (pickingProduct(); as product) {
   <app-variant-picker
     [product]="product"
+    [outOfStock]="outOfStock()"
     (picked)="pickVariant(product, $event)"
     (cancelled)="pickingProduct.set(null)"
+  />
+}
+
+@if (stockSheetOpen() && menu.hasValue()) {
+  <app-stock-sheet
+    [products]="menu.value()"
+    [marks]="outOfStock()"
+    (changed)="onMarksChanged($event)"
+    (savingChange)="onStockSaving($event)"
+    (conflict)="currentEvent.refresh()"
+    (closed)="stockSheetOpen.set(false)"
+  />
+}
+
+@if (restocking(); as target) {
+  <app-restock-sheet
+    [product]="target.product"
+    [variant]="target.variant"
+    (restocked)="onRestocked($event)"
+    (savingChange)="onStockSaving($event)"
+    (conflict)="currentEvent.refresh()"
+    (cancelled)="restocking.set(null)"
   />
 }
 
@@ -188,7 +225,11 @@
 }
 
 @if (notice(); as message) {
-  <div class="toast" role="status">
+  <div
+    class="toast"
+    [class.alert]="noticeIsAlert()"
+    [attr.role]="noticeIsAlert() ? 'alert' : 'status'"
+  >
     <p>{{ message }}</p>
     <button type="button" aria-label="Cerrar aviso" (click)="showNotice(null)">✕</button>
   </div>

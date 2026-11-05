@@ -1,7 +1,19 @@
-import { afterNextRender, Component, ElementRef, input, output, viewChild } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  ElementRef,
+  input,
+  output,
+  viewChild,
+} from '@angular/core';
 import { ProductResponse, ProductVariantResponse } from '../product/product';
+import { NOTHING_OUT_OF_STOCK, OutOfStock } from './stock';
 
-/** Bottom sheet to pick a variant. Tapping a variant picks it right away; the first one is highlighted. */
+/**
+ * Bottom sheet to pick a variant. Tapping a variant picks it right away; the first one that can be sold is
+ * highlighted. One «Agotado» stays in its place, in grey: the page offers «¿Llegó más?» instead of adding it.
+ */
 @Component({
   selector: 'app-variant-picker',
   host: { '(document:keydown.escape)': 'cancelled.emit()' },
@@ -10,8 +22,8 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="variant-picker-title">
       <h2 id="variant-picker-title">{{ product().name }}</h2>
       <div class="variants">
-        @for (variant of product().variants; track variant.id; let first = $first) {
-          @if (first) {
+        @for (variant of product().variants; track variant.id) {
+          @if (variant.id === firstAvailableId()) {
             <button
               #firstVariant
               type="button"
@@ -21,8 +33,16 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
               {{ variant.name }}
             </button>
           } @else {
-            <button type="button" class="variant" (click)="picked.emit(variant)">
+            <button
+              type="button"
+              class="variant"
+              [class.out-of-stock]="outOfStock().has(variant.id)"
+              (click)="picked.emit(variant)"
+            >
               {{ variant.name }}
+              @if (outOfStock().has(variant.id)) {
+                <span class="sold-out">Agotado</span>
+              }
             </button>
           }
         }
@@ -71,6 +91,21 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
       color: var(--on-accent);
     }
 
+    // Same stripes as the Venta grid.
+    .out-of-stock {
+      border-style: dashed;
+      background: repeating-linear-gradient(135deg, var(--bg) 0 0.5rem, var(--surface) 0.5rem 1rem);
+      color: var(--muted);
+    }
+
+    .sold-out {
+      margin-left: 0.4rem;
+      color: var(--text);
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
     .cancel {
       width: 100%;
       background: transparent;
@@ -79,8 +114,14 @@ import { ProductResponse, ProductVariantResponse } from '../product/product';
 })
 export class VariantPicker {
   readonly product = input.required<ProductResponse>();
+  readonly outOfStock = input<OutOfStock>(NOTHING_OUT_OF_STOCK);
   readonly picked = output<ProductVariantResponse>();
   readonly cancelled = output<void>();
+
+  /** Undefined when every variant is out: nothing is highlighted. */
+  protected readonly firstAvailableId = computed(
+    () => this.product().variants.find((variant) => !this.outOfStock().has(variant.id))?.id,
+  );
 
   private readonly firstVariant = viewChild<ElementRef<HTMLButtonElement>>('firstVariant');
 

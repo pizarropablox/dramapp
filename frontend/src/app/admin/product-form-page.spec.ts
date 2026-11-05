@@ -383,7 +383,7 @@ describe('ProductFormPage', () => {
         expectDisabled('Desactivar Original', 'variants-event-open');
         expectDisabled('Desactivar Manzana', 'variants-event-open');
         expect(EVENT_OPEN_MESSAGE).toBe(
-          'Hay un evento abierto. Si se acabó esta noche, márcalo Sin stock.',
+          'Hay un evento abierto. Si se acabó esta noche, márcalo agotado.',
         );
         expect(root().querySelector('#deactivate-locked')?.textContent).toBe(EVENT_OPEN_MESSAGE);
         expect(root().querySelector('#variants-event-open')?.textContent).toBe(EVENT_OPEN_MESSAGE);
