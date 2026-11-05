@@ -561,7 +561,7 @@ describe('SalePage', () => {
         expect(cartLabels()).toEqual(['Red Bull']);
       });
 
-      it('does not apply an answer that arrives once a sale is being sent', async () => {
+      it('confirming drops a reload in flight: its answer is older than the sale', async () => {
         await setup();
         backToTheForeground();
         const menuRequest = httpTesting.expectOne('/api/products');
@@ -570,13 +570,201 @@ describe('SalePage', () => {
         confirmButton().click();
         TestBed.tick();
 
-        menuRequest.flush([...MENU, VASO]);
-        await fixture.whenStable();
-
-        expect(names()).not.toContain('Vaso de bebida');
+        expect(menuRequest.cancelled).toBe(true);
         httpTesting
           .expectOne('/api/sales')
           .flush(saleResponse({ subtotal: 3500, tipAmount: 0, amountToCharge: 3500 }));
+      });
+    });
+  });
+
+  describe('Agotado', () => {
+    const SINCE = '2026-11-01T06:30:00Z';
+    /** Red Bull and Jack Daniels Manzana are out. */
+    const MARKED_MENU: ProductResponse[] = MENU.map((product) => ({
+      ...product,
+      variants: product.variants.map((variant) =>
+        variant.id === 121 || variant.id === 92 ? { ...variant, outOfStockSince: SINCE } : variant,
+      ),
+    }));
+
+    function isGrey(name: string): boolean {
+      return productButton(name).classList.contains('out-of-stock');
+    }
+
+    function grey(): string[] {
+      return Array.from(root().querySelectorAll('app-product-grid .out-of-stock .name')).map(
+        (name) => name.textContent?.trim() ?? '',
+      );
+    }
+
+    async function sell(outOfStockVariantIds?: number[]): Promise<void> {
+      await tap(productButton('Agua 600cc'));
+      await tap(button('Efectivo'));
+      confirmButton().click();
+      TestBed.tick();
+      httpTesting.expectOne('/api/sales').flush({
+        ...saleResponse({ subtotal: 3000, tipAmount: 0, amountToCharge: 3000 }),
+        outOfStockVariantIds,
+      });
+      await fixture.whenStable();
+      await tap(button('Siguiente venta'));
+    }
+
+    describe('in the grid', () => {
+      it('keeps the button in its place, with the label in the place of the price', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        const names = Array.from(root().querySelectorAll('app-product-grid .name')).map((name) =>
+          name.textContent?.trim(),
+        );
+        expect(names).toEqual(['Cerveza', 'Jack Daniels', 'Red Bull', 'Agua 600cc']);
+        expect(isGrey('Red Bull')).toBe(true);
+        expect(productButton('Red Bull').querySelector('.price')?.textContent).toBe('Agotado');
+        expect(productButton('Red Bull').textContent).not.toContain('$3.500');
+        expect(productButton('Red Bull').disabled).toBe(false);
+      });
+
+      it('does not add it to the cart', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await tap(productButton('Red Bull'));
+
+        expect(cartLabels()).toEqual([]);
+      });
+
+      it('leaves a product with another variant left as it is', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        expect(isGrey('Jack Daniels')).toBe(false);
+        expect(productButton('Jack Daniels').textContent).toContain('$8.500');
+      });
+
+      it('goes grey when every variant is out', async () => {
+        const allOut = MENU.map((product) =>
+          product.id === 1
+            ? {
+                ...product,
+                variants: product.variants.map((v) => ({ ...v, outOfStockSince: SINCE })),
+              }
+            : product,
+        );
+        await setup(OPEN_EVENT, allOut);
+
+        expect(isGrey('Cerveza')).toBe(true);
+      });
+    });
+
+    describe('in the variant picker', () => {
+      it('shows it in grey, in its place, and does not add it', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+        await tap(productButton('Jack Daniels'));
+
+        const variants = Array.from(dialog()!.querySelectorAll<HTMLElement>('.variant'));
+        expect(variants.map((v) => v.textContent?.trim())).toEqual(['Original', 'Manzana Agotado']);
+        expect(variants[1].classList.contains('out-of-stock')).toBe(true);
+
+        await tap(variants[1]);
+
+        expect(cartLabels()).toEqual([]);
+      });
+
+      it('highlights the first variant that can be sold, not a grey one', async () => {
+        const firstOut = MENU.map((product) =>
+          product.id === 9
+            ? {
+                ...product,
+                variants: [{ ...product.variants[0], outOfStockSince: SINCE }, product.variants[1]],
+              }
+            : product,
+        );
+        await setup(OPEN_EVENT, firstOut);
+
+        await tap(productButton('Jack Daniels'));
+
+        expect(dialog()!.querySelector('.primary')?.textContent?.trim()).toBe('Manzana');
+        expect(document.activeElement?.textContent?.trim()).toBe('Manzana');
+      });
+    });
+
+    describe('reaching this phone', () => {
+      it('comes with the answer to a sale, without asking for the menu', async () => {
+        await setup();
+
+        await sell([121]);
+
+        expect(grey()).toEqual(['Red Bull']);
+        httpTesting.expectNone('/api/products');
+      });
+
+      it('a sale also takes off what another phone unmarked', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await sell([92]);
+
+        expect(grey()).toEqual([]);
+      });
+
+      it('keeps the marks when an older backend sends no list', async () => {
+        await setup(OPEN_EVENT, MARKED_MENU);
+
+        await sell(undefined);
+
+        expect(grey()).toEqual(['Red Bull']);
+      });
+
+      it('does not move a button or touch the cart', async () => {
+        await setup();
+        await tap(productButton('Red Bull'));
+        await tap(button('$1.000'));
+        const before = Array.from(root().querySelectorAll('app-product-grid button'));
+
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+        httpTesting.expectOne('/api/products').flush(MARKED_MENU);
+        await fixture.whenStable();
+
+        expect(Array.from(root().querySelectorAll('app-product-grid button'))).toEqual(before);
+        expect(cartLabels()).toEqual(['Red Bull']);
+        expect(button('$1.000').getAttribute('aria-pressed')).toBe('true');
+      });
+    });
+
+    describe('with a sale that may be registered', () => {
+      function backToTheForeground(): void {
+        document.dispatchEvent(new Event('visibilitychange'));
+        httpTesting.match('/api/events/current').forEach((request) => request.flush(OPEN_EVENT));
+      }
+
+      it('does not reload the marks while it is being sent', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+
+        backToTheForeground();
+
+        httpTesting.expectNone('/api/products');
+        httpTesting
+          .expectOne('/api/sales')
+          .flush(saleResponse({ subtotal: 3000, tipAmount: 0, amountToCharge: 3000 }));
+      });
+
+      it('does not reload the marks while it is pending', async () => {
+        await setup();
+        await tap(productButton('Agua 600cc'));
+        await tap(button('Efectivo'));
+        confirmButton().click();
+        TestBed.tick();
+        httpTesting.expectOne('/api/sales').error(new ProgressEvent('error'));
+        await fixture.whenStable();
+
+        backToTheForeground();
+
+        httpTesting.expectNone('/api/products');
+        expect(grey()).toEqual([]);
       });
     });
   });

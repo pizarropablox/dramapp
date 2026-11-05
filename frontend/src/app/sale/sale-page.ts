@@ -32,6 +32,7 @@ import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
+import { NOTHING_OUT_OF_STOCK, OutOfStock, outOfStockFromIds, outOfStockFromMenu } from './stock';
 import {
   priceChangedNotice,
   REFUND_VOIDED_NOTICE,
@@ -116,6 +117,14 @@ export class SalePage {
     const query = normalize(this.search());
     return query ? products.filter((product) => normalize(product.name).includes(query)) : products;
   });
+
+  /**
+   * What is «Agotado» (DRAMA-51). Comes with the menu, so it follows every guarded reload, and is replaced by what
+   * the sale and marking answers bring (see setOutOfStock).
+   */
+  protected readonly outOfStock = linkedSignal<OutOfStock>(() =>
+    this.menu.hasValue() ? outOfStockFromMenu(this.menu.value()) : NOTHING_OUT_OF_STOCK,
+  );
 
   /** Expanded by default whenever the cart gets products; the cashier can collapse it. */
   protected readonly cartExpanded = linkedSignal(() => !this.cart.isEmpty());
@@ -268,6 +277,13 @@ export class SalePage {
     return this.submitting() || this.cart.pending() !== null;
   }
 
+  /** Like a reload, never while a sale may be registered. Only colors change: not the cart, not the tip. */
+  private setOutOfStock(marks: OutOfStock): void {
+    if (!this.saleMayBeRegistered()) {
+      this.outOfStock.set(marks);
+    }
+  }
+
   /** autoCloseMs null: until closed or the next action. */
   protected showNotice(message: string | null, autoCloseMs: number | null = null): void {
     clearTimeout(this.noticeTimer);
@@ -325,17 +341,24 @@ export class SalePage {
 
   protected selectProduct(product: ProductResponse): void {
     if (product.variants.length === 1) {
-      this.forgetEmptied();
-      this.cart.add(product, product.variants[0]);
+      this.addToCart(product, product.variants[0]);
     } else {
       this.pickingProduct.set(product);
     }
   }
 
   protected pickVariant(product: ProductResponse, variant: ProductVariantResponse): void {
+    this.addToCart(product, variant);
+    this.pickingProduct.set(null);
+  }
+
+  /** What is «Agotado» cannot be added. */
+  private addToCart(product: ProductResponse, variant: ProductVariantResponse): void {
+    if (this.outOfStock().has(variant.id)) {
+      return;
+    }
     this.forgetEmptied();
     this.cart.add(product, variant);
-    this.pickingProduct.set(null);
   }
 
   protected confirm(): void {
@@ -350,6 +373,8 @@ export class SalePage {
     };
     this.submitting.set(true);
     this.saleError.set(null);
+    // Its answer would be older than the sale's, and its marks would undo the newer ones.
+    this.menuRefresh?.unsubscribe();
     // Saved before sending: if the page reloads or the answer never comes, it may have been registered.
     this.cart.markSending({
       paymentMethod,
@@ -367,6 +392,10 @@ export class SalePage {
           this.cart.clear();
           this.paymentMethod.set(null);
           this.submitting.set(false);
+          // How this phone learns what another one marked, without asking for anything more.
+          if (sale.outOfStockVariantIds) {
+            this.setOutOfStock(outOfStockFromIds(this.outOfStock(), sale.outOfStockVariantIds));
+          }
         },
         error: (error: unknown) => {
           this.submitting.set(false);

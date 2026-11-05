@@ -59,3 +59,9 @@ export interface SaleResponse {
   /** Optional even when voided. */
   voidReason: string | null;
 }
+
+/** Mirrors the backend's RegisteredSaleResponse: the answer to POST /api/sales. */
+export interface RegisteredSaleResponse extends SaleResponse {
+  /** What is «Agotado» in the event. Missing from an older backend. */
+  outOfStockVariantIds?: number[];
+}

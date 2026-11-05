@@ -78,6 +78,7 @@
       <app-product-grid
         [products]="visibleProducts()"
         [unitsByProduct]="cart.unitsByProduct()"
+        [outOfStock]="outOfStock()"
         (selected)="selectProduct($event)"
       />
     }
@@ -129,6 +130,7 @@
 @if (pickingProduct(); as product) {
   <app-variant-picker
     [product]="product"
+    [outOfStock]="outOfStock()"
     (picked)="pickVariant(product, $event)"
     (cancelled)="pickingProduct.set(null)"
   />
