@@ -18,6 +18,7 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - **Variante**: versión de un producto (ej. Jack Daniels Original / Manzana / Honey).
 - **Promo**: precio especial por cantidad. Puede mezclar variantes del **mismo** producto, nunca productos distintos.
 - **Vale**: flor de papel que la cajera entrega al cliente después de cobrar; el cliente la canjea con el bartender, que la guarda. Al cierre se cuentan para cuadrar contra las ventas registradas.
+- **Agotado**: lo que se acaba durante la noche. Es una marca de la variante en el evento, la pone `barra` y se quita si llega más. No es desactivar, y la app no calcula stock: el indicador es el humano. En el código se llama *out of stock* (`stock_out`, `outOfStockSince`, `OUT_OF_STOCK`).
 - **Roles**:
   - `barra`: registra ventas, anula y ve totales.
   - `admin`: todo lo anterior, más administrar la carta (productos, variantes, precios, promos) y los eventos.
@@ -57,13 +58,25 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 
 ## Desactivar la carta (DRAMA-30)
 
-- Desactivar es para antes de la fiesta. Con un evento abierto responde 409, y la pantalla lo muestra deshabilitado con el mismo texto; lo que se acaba en la noche se marca «Sin stock» (DRAMA-51). Reactivar sí se permite.
+- Desactivar es para antes de la fiesta. Con un evento abierto responde 409, y la pantalla lo muestra deshabilitado con el mismo texto; lo que se acaba en la noche se marca «Agotado» (DRAMA-51). Reactivar sí se permite.
 - Las acciones son `POST /api/products/{id}/deactivate|reactivate` y `.../variants/{variantId}/deactivate|reactivate`, sin body. Repetirlas responde 200 sin cambiar nada.
 - Producto y variantes son independientes: desactivar un producto no toca `variant.active`. Las variantes de un producto desactivado responden 409 hasta reactivarlo.
 - Un producto activo conserva al menos una variante activa (409 si no), con el producto bloqueado por `findByIdForUpdate`.
 - Se conserva `sort_order`: lo reactivado vuelve a su lugar. Totales y el Excel no filtran por `active`; no agregar ese filtro.
-- Vender algo desactivado responde 400, nunca 409: el frontend lee el 409 de `POST /api/sales` como «evento cerrado».
+- Vender algo desactivado responde 400, nunca 409: `POST /api/sales` responde 409 solo por evento cerrado o por algo agotado, y este último lleva `code: OUT_OF_STOCK` (ver DRAMA-51). Cualquier otro 409 el frontend lo lee como «evento cerrado».
 - `ProductFormPage` y `MenuStatusPage` piden el evento a `EventService`: `CurrentEventStore` solo se mantiene al día en Venta.
+
+## Agotado (DRAMA-51)
+
+- La marca es por **variante** y por **evento** (`stock_out`, V8): el evento siguiente parte sin marcas y al cerrar no se limpia nada. Las filas no se borran: desmarcar llena `cleared_at`, y queda cada tramo con hora y usuario. Un producto queda gris cuando todas sus variantes de la carta lo están.
+- No toca carta, Totales ni Excel; `/admin/carta` no la muestra. El botón queda en su lugar: «Agotado» reemplaza al precio para que la grilla no se mueva.
+- `POST /api/products/{id}/variants/{variantId}/out-of-stock|restock`, sin body, para `barra`, idempotentes. Responden todas las marcas vigentes con su hora. Sin evento abierto: 409. Marcar algo desactivado: 409.
+- `GET /api/products` sigue siendo un **arreglo** (un teléfono sin actualizar debe seguir funcionando) y trae `variants[].outOfStockSince`.
+- Los otros teléfonos se enteran **sin requests extra**: `POST /api/sales` trae `outOfStockVariantIds` (solo ids) en el 201 y en el 409. No agregar polling ni recargar la carta después de cada venta. La carta sí se recarga al abrir la hoja «Agotados», al responder el aviso de venta pendiente y cuando cambia el evento abierto.
+- Vender algo marcado responde 409 con `code: OUT_OF_STOCK`, `affectedVariantIds` y `outOfStockVariantIds`. Va después del 400 de desactivado. Si se implementa DRAMA-50, buscar el `clientSaleId` **antes** de este chequeo: un reintento de una venta ya registrada no debe recibir este 409.
+- Nada sale solo del carrito: las líneas quedan en gris y «Confirmar venta» se bloquea hasta que la cajera las quite. Las marcas viven en `SalePage.outOfStock`, aparte de la carta: no leer `line.variant.outOfStockSince`, que queda vieja.
+- Las marcas siguen las guardas de la carta: `setOutOfStock` no aplica nada con una venta enviándose o pendiente, y `confirm()` y marcar cancelan la recarga en vuelo, porque su respuesta sería más vieja.
+- Las hojas `StockSheet` y `RestockSheet` no se cierran con un request en curso (timeout de 10 s): cerrar cancelaría una marca que la cajera cree hecha.
 
 ## PWA (DRAMA-32)
 
