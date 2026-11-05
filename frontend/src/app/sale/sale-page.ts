@@ -15,7 +15,7 @@ import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
-import { ProductResponse, ProductVariantResponse } from '../product/product';
+import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { CreateRefundRequest, RefundResponse } from '../refund/refund';
 import { RefundDialog } from '../refund/refund-dialog';
@@ -38,8 +38,11 @@ import {
   OutOfStock,
   outOfStockConflict,
   outOfStockFromIds,
+  outOfStockFromMarks,
   outOfStockFromMenu,
 } from './stock';
+import { RestockSheet } from './restock-sheet';
+import { StockSheet } from './stock-sheet';
 import {
   outOfStockHint,
   priceChangedNotice,
@@ -93,8 +96,10 @@ function normalize(text: string): string {
     ProductGrid,
     RecentSalesSheet,
     RefundDialog,
+    RestockSheet,
     SaleConfirmation,
     SessionExpiryNotice,
+    StockSheet,
     TipSelector,
     VariantPicker,
     VoidRefundDialog,
@@ -136,6 +141,16 @@ export class SalePage {
   protected readonly outOfStock = linkedSignal<OutOfStock>(() =>
     this.menu.hasValue() ? outOfStockFromMenu(this.menu.value()) : NOTHING_OUT_OF_STOCK,
   );
+
+  /** The sheet to mark what ran out. It asks for the menu on opening, so the marks and their times are fresh. */
+  protected readonly stockSheetOpen = signal(false);
+  /** The grey item tapped, while «¿Llegó más?» is asked. */
+  protected readonly restocking = signal<{
+    product: ProductResponse;
+    variant: ProductVariantResponse;
+  } | null>(null);
+  /** A mark is being sent: a reload answered now could be older than its answer. */
+  private stockSaving = false;
 
   /** They stay in the cart, in grey, and block confirming until the cashier takes them out. */
   protected readonly outOfStockLines = computed(() =>
@@ -270,6 +285,21 @@ export class SalePage {
       });
     });
 
+    // A new event starts without marks: a phone left on this screen between two parties must not keep the old grey.
+    let knownEventId: number | null | undefined;
+    effect(() => {
+      if (!this.currentEvent.answered()) {
+        return;
+      }
+      const eventId = this.openEvent()?.id ?? null;
+      untracked(() => {
+        if (knownEventId !== undefined && eventId !== null && eventId !== knownEventId) {
+          this.refreshMenu();
+        }
+        knownEventId = eventId;
+      });
+    });
+
     // A line going grey may be out of view: the cart can be collapsed, and "Muy grande" may show a single row.
     effect(() => {
       const lines = this.outOfStockLines();
@@ -295,6 +325,7 @@ export class SalePage {
     if (
       this.document.hidden ||
       this.saleMayBeRegistered() ||
+      this.stockSaving ||
       !this.menu.hasValue() ||
       (this.menuRefresh && !this.menuRefresh.closed)
     ) {
@@ -319,6 +350,30 @@ export class SalePage {
     if (!this.saleMayBeRegistered()) {
       this.outOfStock.set(marks);
     }
+  }
+
+  protected openStockSheet(): void {
+    if (this.saleMayBeRegistered()) {
+      return;
+    }
+    this.stockSheetOpen.set(true);
+    this.refreshMenu();
+  }
+
+  protected onStockSaving(saving: boolean): void {
+    this.stockSaving = saving;
+    if (saving) {
+      this.menuRefresh?.unsubscribe();
+    }
+  }
+
+  protected onMarksChanged(marks: StockOutResponse[]): void {
+    this.setOutOfStock(outOfStockFromMarks(marks));
+  }
+
+  protected onRestocked(marks: StockOutResponse[]): void {
+    this.onMarksChanged(marks);
+    this.restocking.set(null);
   }
 
   /** autoCloseMs null: until closed or the next action. */
@@ -369,12 +424,14 @@ export class SalePage {
     this.cart.clear();
     this.paymentMethod.set(null);
     this.saleError.set(null);
+    this.refreshMenu(); // Skipped while the notice was up.
   }
 
   /** "No está: seguir": it can be confirmed again. */
   protected pendingNotRegistered(): void {
     this.cart.markNotSent();
     this.saleError.set(null);
+    this.refreshMenu(); // Skipped while the notice was up.
   }
 
   protected onSearch(event: Event): void {
@@ -394,9 +451,12 @@ export class SalePage {
     this.pickingProduct.set(null);
   }
 
-  /** What is «Agotado» cannot be added. */
+  /** What is «Agotado» cannot be added: «¿Llegó más?» is offered instead. */
   private addToCart(product: ProductResponse, variant: ProductVariantResponse): void {
     if (this.outOfStock().has(variant.id)) {
+      if (!this.saleMayBeRegistered()) {
+        this.restocking.set({ product, variant });
+      }
       return;
     }
     this.forgetEmptied();

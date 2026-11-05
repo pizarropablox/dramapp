@@ -82,6 +82,18 @@
         (selected)="selectProduct($event)"
       />
     }
+    @if (openEvent() && menu.hasValue()) {
+      <!-- After the products and apart from them: during the peak a tap on the grid only adds to the cart. -->
+      <button
+        type="button"
+        class="mark-stock"
+        aria-haspopup="dialog"
+        [disabled]="submitting() || !!cart.pending()"
+        (click)="openStockSheet()"
+      >
+        Agotados
+      </button>
+    }
   </main>
 
   <section class="checkout" aria-label="Venta actual">
@@ -134,6 +146,28 @@
     [outOfStock]="outOfStock()"
     (picked)="pickVariant(product, $event)"
     (cancelled)="pickingProduct.set(null)"
+  />
+}
+
+@if (stockSheetOpen() && menu.hasValue()) {
+  <app-stock-sheet
+    [products]="menu.value()"
+    [marks]="outOfStock()"
+    (changed)="onMarksChanged($event)"
+    (savingChange)="onStockSaving($event)"
+    (conflict)="currentEvent.refresh()"
+    (closed)="stockSheetOpen.set(false)"
+  />
+}
+
+@if (restocking(); as target) {
+  <app-restock-sheet
+    [product]="target.product"
+    [variant]="target.variant"
+    (restocked)="onRestocked($event)"
+    (savingChange)="onStockSaving($event)"
+    (conflict)="currentEvent.refresh()"
+    (cancelled)="restocking.set(null)"
   />
 }
 

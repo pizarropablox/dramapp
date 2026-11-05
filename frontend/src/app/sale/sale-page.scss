@@ -92,6 +92,17 @@
   text-align: center;
 }
 
+// Quiet on purpose: it is used once or twice a night, and it does not look like a product.
+.mark-stock {
+  width: 100%;
+  margin-top: 0.75rem;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .checkout {
   display: flex;
   flex-direction: column;
