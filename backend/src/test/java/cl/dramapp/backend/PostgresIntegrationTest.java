@@ -14,10 +14,13 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * no events or sales), and tests roll back with @Transactional.
  * <p>
  * Login users with test-only passwords, overriding anything a developer's .env sets. The JWT secret is empty: each
- * Spring context signs with its own random key.
+ * Spring context signs with its own random key. The Point is off, and Mercado Pago is out of reach even if a
+ * developer's .env has the real token.
  */
 @TestPropertySource(properties = { "dramapp.auth.barra-password={noop}" + PostgresIntegrationTest.BARRA_PASSWORD,
-		"dramapp.auth.admin-password={noop}" + PostgresIntegrationTest.ADMIN_PASSWORD, "dramapp.auth.jwt-secret=" })
+		"dramapp.auth.admin-password={noop}" + PostgresIntegrationTest.ADMIN_PASSWORD, "dramapp.auth.jwt-secret=",
+		"dramapp.point.terminals=", "dramapp.point.access-token=", "dramapp.point.key-prefix=",
+		"dramapp.point.print-on-terminal=no_ticket", "dramapp.point.base-url=http://localhost:1" })
 public abstract class PostgresIntegrationTest {
 
 	public static final String BARRA_PASSWORD = "barra-test-password";
