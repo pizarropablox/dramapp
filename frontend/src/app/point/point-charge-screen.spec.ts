@@ -292,7 +292,8 @@ describe('PointChargeScreen', () => {
 
     advance(POLL_MS);
     fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
-    expect(title()).toContain('La Point no responde');
+    expect(title()).toBe('La Point no responde. Mira su pantalla');
+    expect(text()).not.toContain('Puedes volver al carrito');
     expect(buttons()).toEqual([
       'Reintentar',
       'La Point dice APROBADO',
@@ -432,6 +433,60 @@ describe('PointChargeScreen', () => {
     tap('Reintentar');
     answer(canceled(), order({ state: 'CANCELED', status: 'canceled', saleStatus: 'VOIDED' }));
     expect(returned).toHaveLength(1);
+  });
+
+  /** The next polls get no answer. */
+  function pollsFail(times: number): void {
+    for (let i = 0; i < times; i++) {
+      advance(POLL_MS);
+      fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
+    }
+  }
+
+  it('with Mercado Pago down, what cannot be canceled is closed by hand', () => {
+    renderWith();
+    tap('Volver al carrito');
+    fail(canceled(), 502, { code: 'POINT_UNAVAILABLE' });
+    expect(buttons()).toEqual(['Reintentar']);
+    pollsFail(2);
+    expect(buttons()).toEqual(['Reintentar']);
+
+    pollsFail(1);
+    expect(title()).toBe('No se pudo cancelar');
+    expect(buttons()).toEqual([
+      'Reintentar',
+      'La Point dice APROBADO',
+      'No se cobró y la Point no muestra el monto',
+    ]);
+    tap('No se cobró y la Point no muestra el monto');
+    tap('Sí, seguro');
+    const request = resolved();
+    expect(request.request.body).toEqual({ outcome: 'NOT_PAID' });
+    answer(request, order({ state: 'CANCELED', saleStatus: 'VOIDED' }));
+    expect(returned).toHaveLength(1);
+  });
+
+  it('also when Mercado Pago falls after asking to cancel', () => {
+    renderWith();
+    tap('Volver al carrito');
+    answer(canceled(), order({ state: 'CANCELING', cancelRequested: true }));
+    pollsFail(Math.ceil(CANCEL_SLOW_MS / POLL_MS));
+
+    expect(title()).toBe('No se pudo cancelar');
+    expect(buttons()).toContain('La Point dice APROBADO');
+    expect(returned).toEqual([]);
+  });
+
+  it('keeps asking after failing to cancel a charge found after a reload', () => {
+    render(false);
+    fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
+    pollsFail(2);
+    tap('Volver al carrito');
+    fail(canceled(), 502, { code: 'POINT_UNAVAILABLE' });
+    next({});
+
+    expect(title()).toBe('No se pudo cancelar');
+    expect(buttons()).toEqual(['Reintentar']);
   });
 
   it('it may be paid after failing to cancel', () => {

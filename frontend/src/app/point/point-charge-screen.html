@@ -64,6 +64,7 @@
       <button type="button" class="main" (click)="goBack()">{{ backLabel() }}</button>
     }
     @case ('notResponding') {
+      <p>{{ texts.notRespondingHelp }}</p>
       <button type="button" class="main" (click)="poll()">Reintentar</button>
     }
     @case ('paid') {

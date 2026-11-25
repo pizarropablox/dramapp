@@ -245,7 +245,13 @@ export class PointChargeScreen implements OnInit {
   /** Only when Mercado Pago gives no outcome; the backend checks it too. */
   protected readonly canCloseByHand = computed(() => {
     const view = this.view();
-    return view === 'attention' || view === 'notResponding' || view === 'uncertain';
+    return (
+      view === 'attention' ||
+      view === 'notResponding' ||
+      view === 'uncertain' ||
+      // Mercado Pago does not answer: it can neither be canceled nor followed.
+      (view === 'cancelFailed' && this.failures() >= MAX_FAILURES)
+    );
   });
   protected readonly canGoBack = computed(() =>
     (
@@ -425,7 +431,7 @@ export class PointChargeScreen implements OnInit {
         }
         this.cancelFailed.set(true);
         this.message.set(errorMessage(error));
-        if (order && !this.problem()) {
+        if (!this.problem()) {
           this.timer.schedule(POLL_MS, () => this.poll());
         }
       },

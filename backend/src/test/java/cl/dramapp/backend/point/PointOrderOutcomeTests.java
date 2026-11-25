@@ -265,6 +265,17 @@ class PointOrderOutcomeTests extends PointScenario {
 	}
 
 	@Test
+	void whatCouldNotBeCanceledBecauseMercadoPagoFellIsClosedByHand() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		assertProblem(cancel(sale), HttpStatus.BAD_GATEWAY, "POINT_UNAVAILABLE");
+
+		assertState(resolve(sale, "NOT_PAID"), "CANCELED");
+		assertVoided(sale, "Vuelta al carrito (no cobrada)");
+		mercadoPago.down(false);
+	}
+
+	@Test
 	void anUnknownOrderCanBeClosedByHandWithoutSendingItsKeyAgain() {
 		long sale = cardSale();
 		mercadoPago.failNextOrder(Failure.LOST);
