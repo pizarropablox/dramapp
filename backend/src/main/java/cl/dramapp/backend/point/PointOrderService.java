@@ -215,6 +215,10 @@ public class PointOrderService {
 			}
 		}
 		return update(saleId, order.getId(), locked -> {
+			// Checked again with the lock: another phone may have started sending it meanwhile.
+			if (locked.isBeingSent()) {
+				throw PointException.notClosable();
+			}
 			if (!locked.isSettled()) {
 				locked.closeByHand(outcome, username);
 			}

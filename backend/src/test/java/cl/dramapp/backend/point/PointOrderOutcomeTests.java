@@ -1,11 +1,19 @@
 package cl.dramapp.backend.point;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
@@ -16,6 +24,9 @@ import cl.dramapp.backend.sale.PaymentMethod;
 /** Cancelling, voiding, closing by hand and what is forbidden while a charge is open. */
 @WithMockUser(username = "barra", roles = "BARRA")
 class PointOrderOutcomeTests extends PointScenario {
+
+	@Autowired
+	private PointOrderService pointOrderService;
 
 	private MvcTestResult cancel(long saleId) {
 		return post("/api/sales/" + saleId + "/point-order/cancel", "");
@@ -273,6 +284,39 @@ class PointOrderOutcomeTests extends PointScenario {
 		assertState(resolve(sale, "NOT_PAID"), "CANCELED");
 		assertVoided(sale, "Vuelta al carrito (no cobrada)");
 		mercadoPago.down(false);
+	}
+
+	@Test
+	void whatAnotherPhoneStartsSendingMeanwhileIsNotClosedByHand() throws Exception {
+		long sale = cardSale();
+		mercadoPago.failNextOrder(Failure.LOST);
+		send(sale);
+
+		try (ExecutorService phone = Executors.newSingleThreadExecutor()) {
+			Future<PointOrderResponse> closing = transaction.execute(status -> {
+				// The other phone holds the sale, about to send it again with the same key.
+				saleRepository.findByIdForUpdate(sale).orElseThrow();
+				Future<PointOrderResponse> waiting = phone
+					.submit(() -> pointOrderService.closeByHand(sale, PointOrderOutcome.NOT_PAID, "barra"));
+				waitUntilSomeoneWaitsForALock();
+				jdbcTemplate.update("UPDATE point_order SET last_checked_at = NULL, updated_at = now()");
+				return waiting;
+			});
+
+			assertThatThrownBy(closing::get).cause()
+				.isInstanceOfSatisfying(PointException.class,
+						ex -> assertThat(ex.getBody().getProperties()).containsEntry("code", "POINT_NOT_CLOSABLE"));
+		}
+		assertThat(order(sale).getResolvedOutcome()).isNull();
+		assertActive(sale);
+	}
+
+	/** It already passed the checks made before locking the sale. */
+	private void waitUntilSomeoneWaitsForALock() {
+		Awaitility.await()
+			.atMost(Duration.ofSeconds(10))
+			.until(() -> jdbcTemplate.queryForObject(
+					"SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'", Integer.class) > 0);
 	}
 
 	@Test
