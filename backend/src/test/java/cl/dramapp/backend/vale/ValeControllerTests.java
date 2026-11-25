@@ -92,6 +92,7 @@ class ValeControllerTests extends PointScenario {
 		assertThat(mercadoPago.printContent(mpPrintId())).contains("[ ] TROPICAL GIN (promo){br}[ ] TROPICAL GIN (promo)")
 			.contains("[ ] CERVEZA NORMAL{br}")
 			.contains("Total $17.000 · Venta #" + sale)
+			.contains("Propina $1.000")
 			.doesNotContain("REIMPRESIÓN");
 		assertThat(valePrintRepository.findAll()).singleElement()
 			.satisfies(print -> assertThat(print.getRequestedBy()).isEqualTo("barra"));

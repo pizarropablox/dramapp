@@ -49,11 +49,13 @@ public final class ValeContent {
 	/**
 	 * @param soldAt shown in Chilean time
 	 * @param total whole pesos, without the tip
+	 * @param tip on its own line under the total; none when 0
 	 */
-	public static String of(long saleId, Instant soldAt, List<Glass> glasses, long total, boolean reprint) {
+	public static String of(long saleId, Instant soldAt, List<Glass> glasses, long total, long tip, boolean reprint) {
 		String header = (reprint ? centered(bold("REIMPRESIÓN")) : "") + centered(bold("FIESTA DRAMA"))
 				+ centered(dayAndTime(soldAt)) + line(RULE);
-		String footer = line(RULE) + centered("Total " + pesos(total) + " · Venta #" + saleId);
+		String footer = line(RULE) + centered("Total " + pesos(total) + " · Venta #" + saleId)
+				+ (tip > 0 ? centered("Propina " + pesos(tip)) : "");
 		int room = MAX_LENGTH - header.length() - footer.length();
 
 		String body = body(glasses.stream().map(glass -> BOX + text(glass)).toList());

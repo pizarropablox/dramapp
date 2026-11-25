@@ -26,7 +26,7 @@ class ValeContentTests {
 	}
 
 	private static String vale(List<Glass> glasses) {
-		return ValeContent.of(182, SOLD_AT, glasses, 17000, false);
+		return ValeContent.of(182, SOLD_AT, glasses, 17000, 0, false);
 	}
 
 	private static List<String> rows(String content) {
@@ -45,7 +45,7 @@ class ValeContentTests {
 
 	@Test
 	void aReprintSaysSoOnTop() {
-		String content = ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), 3000, true);
+		String content = ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), 3000, 0, true);
 
 		assertThat(rows(content)).startsWith("REIMPRESIÓN", "FIESTA DRAMA");
 	}
@@ -60,13 +60,34 @@ class ValeContentTests {
 			"2026-11-28T03:00:00Z, Sábado 28/11 · 00:00", "2026-11-25T15:00:00Z, Miércoles 25/11 · 12:00",
 			"2026-11-29T15:00:00Z, Domingo 29/11 · 12:00" })
 	void theDateIsTheSalesInChile(Instant soldAt, String expected) {
-		assertThat(rows(ValeContent.of(1, soldAt, List.of(glass("Cerveza")), 3000, false)).get(1)).isEqualTo(expected);
+		assertThat(rows(ValeContent.of(1, soldAt, List.of(glass("Cerveza")), 3000, 0, false)).get(1)).isEqualTo(expected);
 	}
 
 	@ParameterizedTest
 	@CsvSource({ "500, Total $500 · Venta #182", "3000, Total $3.000 · Venta #182", "1234567, Total $1.234.567 · Venta #182" })
 	void theTotalReadsAsPesos(long total, String expected) {
-		assertThat(rows(ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), total, false))).endsWith(expected);
+		assertThat(rows(ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), total, 0, false))).endsWith(expected);
+	}
+
+	@Test
+	void theTipIsApartUnderTheTotal() {
+		String content = ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), 17000, 1500, false);
+
+		assertThat(rows(content)).endsWith("Total $17.000 · Venta #182", "Propina $1.500");
+		assertThat(content).endsWith("{center}Propina $1.500{/center}{br}");
+	}
+
+	@Test
+	void withoutATipThereIsNoLineForIt() {
+		assertThat(vale(List.of(glass("Cerveza")))).doesNotContain("Propina");
+	}
+
+	@Test
+	void aHugeSaleWithATipStillFits() {
+		String content = ValeContent.of(182, SOLD_AT, Collections.nCopies(400, glass("Cerveza")), 17000, 10000, true);
+
+		assertThat(content).hasSizeLessThanOrEqualTo(4096);
+		assertThat(rows(content)).endsWith("Propina $10.000");
 	}
 
 	@Test
@@ -108,7 +129,7 @@ class ValeContentTests {
 
 	@Test
 	void theShortestValeReachesTheMinimum() {
-		assertThat(ValeContent.of(1, SOLD_AT, List.of(glass("X")), 1, false)).hasSizeGreaterThanOrEqualTo(100);
+		assertThat(ValeContent.of(1, SOLD_AT, List.of(glass("X")), 1, 0, false)).hasSizeGreaterThanOrEqualTo(100);
 	}
 
 	@Test

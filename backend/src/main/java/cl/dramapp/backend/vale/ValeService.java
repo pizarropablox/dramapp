@@ -241,7 +241,7 @@ public class ValeService {
 	private Prepared prepare(Sale sale, String terminalId, ValePrintKind kind, String requestedBy) {
 		ValePrint print = valePrintRepository.saveAndFlush(new ValePrint(sale, terminalId, kind, requestedBy));
 		String content = ValeContent.of(sale.getId(), sale.getCreatedAt(), glasses(sale), sale.getSubtotal(),
-				kind == ValePrintKind.REPRINT);
+				sale.getTip(), kind == ValePrintKind.REPRINT);
 		return new Prepared(sale.getId(), print.getId(), properties.keyPrefix() + "-vale-" + print.getId(), terminalId,
 				content);
 	}
