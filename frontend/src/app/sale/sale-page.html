@@ -132,6 +132,7 @@
       [savings]="cart.totals().savings"
       [methodsHidden]="!!unconfirmedSale()"
       [(paymentMethod)]="paymentMethod"
+      [mercadoPagoLabel]="mercadoPagoLabel()"
       [canConfirm]="canConfirm()"
       [submitting]="submitting()"
       [hint]="unconfirmedSale() ? null : blockReason()"

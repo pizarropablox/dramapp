@@ -15,6 +15,7 @@ import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
+import { PointTerminalStore } from '../point/point-terminal-store';
 import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { CreateRefundRequest, RefundResponse } from '../refund/refund';
@@ -29,7 +30,7 @@ import { CartStore, EmptiedCart } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
 import { PendingSaleNotice } from './pending-sale-notice';
 import { ProductGrid } from './product-grid';
-import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
+import { MAX_TIP, PAYMENT_METHOD_LABELS, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
@@ -117,6 +118,15 @@ export class SalePage {
   private readonly auth = inject(AuthStore);
   private readonly document = inject(DOCUMENT);
   protected readonly cart = inject(CartStore);
+  private readonly pointTerminal = inject(PointTerminalStore);
+
+  /** The cashier reads where the amount will show up; with a Point Mini it says what it always has. */
+  protected readonly mercadoPagoLabel = computed(() => {
+    const terminal = this.pointTerminal.terminal();
+    return terminal
+      ? `${PAYMENT_METHOD_LABELS.MERCADO_PAGO} · ${terminal.name}`
+      : PAYMENT_METHOD_LABELS.MERCADO_PAGO;
+  });
 
   protected readonly menu = rxResource({ stream: () => this.productService.getMenu() });
   /** The menu asked again when the app is back in the foreground (see refreshMenu). */
