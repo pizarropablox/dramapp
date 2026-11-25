@@ -54,7 +54,7 @@ export class PointTerminalStore {
   }
 }
 
-function isTerminal(value: unknown): value is PointTerminal {
+export function isTerminal(value: unknown): value is PointTerminal {
   if (typeof value !== 'object' || value === null) {
     return false;
   }

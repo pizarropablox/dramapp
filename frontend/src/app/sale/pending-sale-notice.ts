@@ -79,17 +79,18 @@ import { PAYMENT_METHOD_LABELS } from './sale';
 })
 export class PendingSaleNotice {
   readonly pending = input.required<PendingSale>();
-  /**
-   * This phone charges with a Point Smart: a sale that was registered without an answer was never sent to it, nor
-   * its vale printed. Emptying the cart would leave it uncharged, so it is voided and confirmed again.
-   */
-  readonly smart = input(false);
   /** "Ver ventas": opens Últimas ventas to look for it. */
   readonly review = output<void>();
   /** "Ya está: vaciar": it was registered, start a new sale. */
   readonly registered = output<void>();
   /** "No está: seguir": it was not, so it can be confirmed again. */
   readonly notRegistered = output<void>();
+
+  /**
+   * It was confirmed to be charged with a Point Smart: if it was registered, it was never sent to it, nor its vale
+   * printed. Emptying the cart would leave it uncharged, so it is voided and confirmed again.
+   */
+  protected readonly smart = computed(() => this.pending().terminal != null);
 
   /** "23:15 · Mercado Pago · $12.000". */
   protected readonly details = computed(() => {

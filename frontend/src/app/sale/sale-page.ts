@@ -142,8 +142,6 @@ export class SalePage {
   /** Nothing was charged: the order goes back to the cart as soon as there is a menu to rebuild it with. */
   private readonly returnedOrder = signal<PointOrderResponse | null>(null);
 
-  protected readonly chargesWithSmart = computed(() => this.pointTerminal.terminal() !== null);
-
   /** The cashier reads where the amount will show up; with a Point Mini it says what it always has. */
   protected readonly mercadoPagoLabel = computed(() => {
     const terminal = this.pointTerminal.terminal();
@@ -538,6 +536,7 @@ export class SalePage {
       paymentMethod,
       amountToCharge: this.cart.totals().subtotal + request.tipAmount,
       startedAt: Date.now(),
+      terminal,
     });
     // If this page is left before the answer, the request is cancelled but the cart stays "sending".
     this.saleService

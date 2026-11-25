@@ -1,5 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, InjectionToken } from '@angular/core';
+import { PointTerminal } from '../point/point';
+import { isTerminal } from '../point/point-terminal-store';
 import { ProductResponse } from '../product/product';
 import { CartLine } from './cart-store';
 import { MAX_TIP, PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
@@ -45,6 +47,8 @@ export interface PendingSale {
   amountToCharge: number;
   /** Epoch ms. */
   startedAt: number;
+  /** The Smart it was going to be charged with, whatever is chosen later. Null (or an older cart): a Point Mini. */
+  terminal?: PointTerminal | null;
 }
 
 /** What is saved: no prices, the total is always recalculated with the current menu. */
@@ -218,7 +222,8 @@ function isPendingSale(value: unknown): value is PendingSale {
     typeof value['paymentMethod'] === 'string' &&
     Object.hasOwn(PAYMENT_METHOD_LABELS, value['paymentMethod']) &&
     Number.isInteger(value['amountToCharge']) &&
-    Number.isFinite(value['startedAt'])
+    Number.isFinite(value['startedAt']) &&
+    (value['terminal'] == null || isTerminal(value['terminal']))
   );
 }
 

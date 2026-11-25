@@ -556,6 +556,34 @@ describe('SalePage with a Point Smart', () => {
     expect(button('No está: seguir')).toBeTruthy();
   });
 
+  it('that notice follows the Point the sale was sent with, not the one chosen now', async () => {
+    await setup();
+    await loseTheAnswer();
+    TestBed.inject(PointTerminalStore).set(null);
+    await update();
+
+    expect(noticeText()).toContain('anúlala en Ventas');
+    expect(button('Ya está: vaciar')).toBeUndefined();
+
+    // After a reload too.
+    await reload();
+    expect(noticeText()).toContain('anúlala en Ventas');
+    expect(button('Ya está: vaciar')).toBeUndefined();
+  });
+
+  it('a sale sent with a Point Mini keeps its notice when a Smart is chosen later', async () => {
+    TestBed.inject(PointTerminalStore).set(null);
+    await setup();
+    await loseTheAnswer();
+    TestBed.inject(PointTerminalStore).set(SMART);
+    await update();
+
+    expect(noticeText()).not.toContain('anúlala');
+    await reload();
+    expect(noticeText()).not.toContain('anúlala');
+    expect(button('Ya está: vaciar')).toBeTruthy();
+  });
+
   it('a failed registration starts no charge', async () => {
     await setup();
     cart().add(RED_BULL, RED_BULL.variants[0]);

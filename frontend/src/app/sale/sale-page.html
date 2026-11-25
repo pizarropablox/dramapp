@@ -119,7 +119,6 @@
     @if (unconfirmedSale(); as pending) {
       <app-pending-sale-notice
         [pending]="pending"
-        [smart]="chargesWithSmart()"
         (review)="openRecent()"
         (registered)="pendingRegistered()"
         (notRegistered)="pendingNotRegistered()"
