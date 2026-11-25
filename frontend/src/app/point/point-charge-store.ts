@@ -1,4 +1,4 @@
-import { inject, Service, signal } from '@angular/core';
+import { computed, inject, Service, signal } from '@angular/core';
 import { ProductResponse } from '../product/product';
 import { lineLabel } from '../sale/cart-storage';
 import { CartLine, EmptiedCart } from '../sale/cart-store';
@@ -26,6 +26,8 @@ export interface PointCharge {
   tip: TipChoice;
   /** To void a cash sale from its screen. */
   sale: SaleResponse | null;
+  /** Closed by hand as not charged, and then the cashier read APROBADO: the cart does not come back on its own. */
+  contested?: boolean;
 }
 
 /** The last sale this phone printed, to print it again after going on. */
@@ -46,6 +48,8 @@ export class PointChargeStore {
 
   readonly charge = this.chargeState.asReadonly();
 
+  readonly contested = computed(() => this.chargeState()?.contested === true);
+
   private readonly lastValeState = signal<LastVale | null>(null);
 
   /** Not saved: only since the app was opened. */
@@ -56,6 +60,17 @@ export class PointChargeStore {
   /** Before the cart is emptied, so nothing is lost in between. */
   start(charge: PointCharge): void {
     this.freshSaleId = charge.saleId;
+    this.save(charge);
+  }
+
+  setContested(contested: boolean): void {
+    const charge = this.chargeState();
+    if (charge) {
+      this.save({ ...charge, contested });
+    }
+  }
+
+  private save(charge: PointCharge): void {
     this.chargeState.set(charge);
     try {
       this.storage?.setItem(

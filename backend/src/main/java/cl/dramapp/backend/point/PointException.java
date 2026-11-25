@@ -101,6 +101,13 @@ public class PointException extends ErrorResponseException {
 				"El cobro sigue en curso en la Point: espera el pago o cancélalo.");
 	}
 
+	/** Closed by hand before with the other outcome, and Mercado Pago does not tell which one is true. */
+	public static PointException closedOtherwise(PointOrder order) {
+		String before = order.getResolvedOutcome() == PointOrderOutcome.PAID ? "pagada" : "no cobrada";
+		return of(HttpStatus.CONFLICT, "POINT_CLOSED_OTHERWISE", "Cerrada a mano con otro resultado",
+				"La venta " + order.getSale().getId() + " ya se cerró a mano como " + before + ". Avisa al admin.");
+	}
+
 	/** Voiding the sale or closing the event would leave the amount alive on the Smart. */
 	public static PointException orderOpen(PointOrder order) {
 		return of(HttpStatus.CONFLICT, "POINT_ORDER_OPEN", "Cobro en curso", "La venta " + order.getSale().getId()

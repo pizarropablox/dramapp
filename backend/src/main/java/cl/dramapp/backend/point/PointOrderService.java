@@ -158,6 +158,9 @@ public class PointOrderService {
 	public PointOrderResponse cancel(Long saleId) {
 		Optional<Attempt> attempt = transaction.execute(status -> requestCancel(saleId));
 		if (attempt.isEmpty()) {
+			// Nothing to cancel, but what was closed by hand may have been paid after all.
+			transaction.execute(status -> pointOrderRepository.findFirstBySaleIdOrderByIdDesc(saleId))
+				.ifPresent(order -> check(saleId, order));
 			return read(saleId);
 		}
 		if (attempt.get().call()) {
@@ -177,6 +180,15 @@ public class PointOrderService {
 			throw PointException.cannotCancel();
 		}
 		return current;
+	}
+
+	/** Asks Mercado Pago for a payment not seen yet. Empty when it does not answer, or there is nothing to ask for. */
+	private Optional<PointOrderState> check(Long saleId, PointOrder order) {
+		if (order.getMpOrderId() != null && !order.isPaidInMercadoPago()
+				&& mercadoPago.getOrder(order.getMpOrderId()) instanceof Ok<MpOrder>(MpOrder current)) {
+			return Optional.of(store(saleId, order.getId(), current).state());
+		}
+		return Optional.empty();
 	}
 
 	/** Empty when there is nothing to ask Mercado Pago. */
@@ -199,25 +211,27 @@ public class PointOrderService {
 
 	/**
 	 * Closes by hand, with what the Smart shows, an order without an outcome: it needs attention, Mercado Pago does not
-	 * answer, or it is not known whether it exists. Never while it can still be followed.
+	 * answer, or it is not known whether it exists. Never while it can still be followed. What was already closed with
+	 * the other outcome is not answered as if it agreed: the cart would come back for a sale that may be charged.
 	 */
 	public PointOrderResponse closeByHand(Long saleId, PointOrderOutcome outcome, String username) {
 		PointOrder order = latest(saleId);
 		if (order.isBeingSent()) {
 			throw PointException.notClosable();
 		}
-		if (!order.isSettled() && order.getMpOrderId() != null
-				&& mercadoPago.getOrder(order.getMpOrderId()) instanceof Ok<MpOrder>(MpOrder current)) {
-			PointOrderState state = store(saleId, order.getId(), current).state();
+		check(saleId, order).ifPresent(state -> {
 			if (state == PointOrderState.SENT || state == PointOrderState.WAITING
 					|| state == PointOrderState.CANCELING) {
 				throw PointException.notClosable();
 			}
-		}
+		});
 		return update(saleId, order.getId(), locked -> {
 			// Checked again with the lock: another phone may have started sending it meanwhile.
 			if (locked.isBeingSent()) {
 				throw PointException.notClosable();
+			}
+			if (locked.contradicts(outcome)) {
+				throw PointException.closedOtherwise(locked);
 			}
 			if (!locked.isSettled()) {
 				locked.closeByHand(outcome, username);

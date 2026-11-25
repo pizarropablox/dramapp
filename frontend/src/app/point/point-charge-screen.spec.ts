@@ -744,6 +744,93 @@ describe('PointChargeScreen', () => {
     expect(title()).toContain('Esperando pago…');
   });
 
+  /** «No se cobró» was stored but its answer was lost, and the cashier then reads APROBADO. */
+  function contest(): void {
+    renderWith();
+    pollsFail(3);
+    tap('La Point dice APROBADO');
+    tap('Sí, seguro');
+    fail(resolved(), 409, { code: 'POINT_CLOSED_OTHERWISE' });
+  }
+
+  const CLOSED: Partial<PointOrderResponse> = {
+    state: 'CANCELED',
+    status: 'at_terminal',
+    saleStatus: 'VOIDED',
+  };
+
+  it('approved after it was closed as not charged does not bring the cart back', () => {
+    contest();
+    expect(title()).toBe('La venta se cerró como no cobrada y está anulada. Avisa al admin');
+    expect(buttons()).toEqual([
+      'Siguiente venta',
+      'La Point dice APROBADO',
+      'No se cobró y la Point no muestra el monto',
+    ]);
+
+    next(CLOSED);
+    next(CLOSED);
+    pollsFail(4);
+    expect(title()).toContain('Avisa al admin');
+    expect(returned).toEqual([]);
+
+    tap('Siguiente venta');
+    expect(finished).toBe(1);
+    expect(returned).toEqual([]);
+  });
+
+  it('neither after a reload', () => {
+    contest();
+    fixture.destroy();
+    render(false);
+    expect(title()).toContain('Avisa al admin');
+    answer(polled(), order(CLOSED));
+
+    expect(title()).toContain('Avisa al admin');
+    expect(returned).toEqual([]);
+  });
+
+  it('it shows the payment as soon as Mercado Pago does', () => {
+    contest();
+    next(CLOSED);
+    next({ state: 'PAID', status: 'processed', saleStatus: 'VOIDED', paidOnVoidedSale: true });
+
+    expect(title()).toBe('Cobro recibido en una venta anulada');
+    expect(returned).toEqual([]);
+  });
+
+  it('the cart comes back when Mercado Pago says that nothing was charged', () => {
+    contest();
+    next({ ...CLOSED, status: 'canceled' });
+
+    expect(returned).toHaveLength(1);
+  });
+
+  it('or when the cashier says again that it was not charged', () => {
+    contest();
+    tap('No se cobró y la Point no muestra el monto');
+    tap('Sí, seguro');
+    answer(resolved(), order(CLOSED));
+
+    expect(returned).toHaveLength(1);
+  });
+
+  it('not charged after it was closed as paid stays paid', () => {
+    renderWith();
+    pollsFail(3);
+    tap('No se cobró y la Point no muestra el monto');
+    tap('Sí, seguro');
+    fail(resolved(), 409, {
+      code: 'POINT_CLOSED_OTHERWISE',
+      detail: 'La venta 182 ya se cerró a mano como pagada. Avisa al admin.',
+    });
+    next({ state: 'PAID', status: 'at_terminal', pendingVerification: true, vale: VALE });
+
+    expect(title()).toContain('Pagado ✓');
+    expect(text()).toContain('ya se cerró a mano como pagada');
+    expect(returned).toEqual([]);
+  });
+
   // ---- could not be sent ----------------------------------------------------------------------
 
   it.each([

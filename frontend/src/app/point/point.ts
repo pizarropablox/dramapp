@@ -61,6 +61,14 @@ export function isPaid(order: PointOrderResponse): boolean {
   );
 }
 
+/** Mercado Pago itself says that nothing was charged, not just what was read on the Smart. */
+export function isNotCharged(order: PointOrderResponse): boolean {
+  return (
+    !isPaid(order) &&
+    (order.status === 'canceled' || order.status === 'expired' || order.status === 'failed')
+  );
+}
+
 /** Mirrors the backend's PointSaleMark: a sale whose charge someone must look at. */
 export interface PointSaleMark {
   saleId: number;
@@ -82,6 +90,7 @@ export type PointErrorCode =
   | 'POINT_UNCERTAIN'
   | 'POINT_CANNOT_CANCEL'
   | 'POINT_NOT_CLOSABLE'
+  | 'POINT_CLOSED_OTHERWISE'
   | 'POINT_ORDER_OPEN'
   | 'POINT_ORDER_NOT_FOUND'
   | 'SALE_NOT_CHARGEABLE'

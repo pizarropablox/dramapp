@@ -65,6 +65,11 @@
         {{ backLabel() }}
       </button>
     }
+    @case ('contested') {
+      <button type="button" class="main" [disabled]="working()" (click)="finished.emit()">
+        Siguiente venta
+      </button>
+    }
     @case ('notResponding') {
       <p>{{ texts.notRespondingHelp }}</p>
       <button type="button" class="main" (click)="poll()">Reintentar</button>

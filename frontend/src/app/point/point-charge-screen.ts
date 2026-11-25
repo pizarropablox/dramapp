@@ -18,6 +18,7 @@ import { ClpPipe } from '../shared/clp';
 import {
   BusyPoint,
   busyPoint,
+  isNotCharged,
   isPaid,
   PointErrorCode,
   pointErrorCode,
@@ -68,6 +69,7 @@ type View =
   | 'notResponding'
   | 'canceling'
   | 'cancelFailed'
+  | 'contested'
   | 'expired'
   | 'paid'
   | 'paidVoided'
@@ -131,6 +133,8 @@ export class PointChargeScreen implements OnInit {
   protected readonly closing = signal<PointOrderOutcome | null>(null);
   protected readonly message = signal<string | null>(null);
   private readonly now = signal(Date.now());
+  /** Only Mercado Pago, or the cashier again, says that nothing was charged. Saved: a reload must not forget it. */
+  private readonly contested = this.store.contested;
 
   /** The charge of another sale that holds the Smart, once the cashier looks at it. */
   protected readonly other = signal<PointOrderResponse | null>(null);
@@ -151,6 +155,9 @@ export class PointChargeScreen implements OnInit {
     const order = this.order();
     if (this.cancelRequest()) {
       return 'canceling';
+    }
+    if (this.contested() && !(order && (isPaid(order) || isNotCharged(order)))) {
+      return 'contested';
     }
     if (this.waitingVale()) {
       return 'waitingVale';
@@ -225,6 +232,8 @@ export class PointChargeScreen implements OnInit {
         return 'Cancelando en la Point…';
       case 'cancelFailed':
         return 'No se pudo cancelar';
+      case 'contested':
+        return POINT_TEXTS.contested;
       case 'expired':
         return 'El cobro venció';
       case 'paid':
@@ -252,6 +261,7 @@ export class PointChargeScreen implements OnInit {
       view === 'attention' ||
       view === 'notResponding' ||
       view === 'uncertain' ||
+      view === 'contested' ||
       // It can neither be canceled nor followed: Mercado Pago does not answer, or it is not known whether it exists.
       (view === 'cancelFailed' &&
         (this.failures() >= MAX_FAILURES || this.order()?.state === 'SENDING'))
@@ -391,6 +401,10 @@ export class PointChargeScreen implements OnInit {
       this.problem.set({ code: 'POINT_ORDER_NOT_FOUND', message: '', busy: null });
       return;
     }
+    if (this.view() === 'contested') {
+      this.timer.schedule(POLL_MS, () => this.poll());
+      return;
+    }
     if (order.state === 'CANCELED' || order.state === 'NOT_SENT') {
       // The Smart may still show an expired amount: the cashier clears it first.
       if (order.status !== 'expired') {
@@ -487,16 +501,25 @@ export class PointChargeScreen implements OnInit {
       (order) => {
         this.working.set(false);
         this.closing.set(null);
+        this.store.setContested(false);
         this.take(order);
       },
       (error) => {
         this.working.set(false);
         this.closing.set(null);
         this.message.set(errorMessage(error));
-        if (pointErrorCode(error) === 'POINT_NOT_CLOSABLE') {
+        const code = pointErrorCode(error);
+        if (code === 'POINT_NOT_CLOSABLE') {
           // It can be followed after all.
           this.failures.set(0);
           this.problem.set(null);
+        }
+        if (code === 'POINT_CLOSED_OTHERWISE') {
+          this.problem.set(null);
+          if (outcome === 'PAID') {
+            this.message.set(null);
+            this.store.setContested(true);
+          }
         }
         this.timer.schedule(POLL_MS, () => this.poll());
       },

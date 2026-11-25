@@ -257,6 +257,15 @@ public class PointOrder {
 		this.updatedAt = resolvedAt;
 	}
 
+	/** Closed by hand with the other outcome, and Mercado Pago does not say which one is true. */
+	boolean contradicts(PointOrderOutcome outcome) {
+		if (resolvedOutcome == null || resolvedOutcome == outcome || isPaidInMercadoPago()) {
+			return false;
+		}
+		boolean notCharged = status != null && FINAL_STATUSES.contains(status);
+		return resolvedOutcome == PointOrderOutcome.PAID || !notCharged;
+	}
+
 	/** It holds its terminal: no other order can be sent there. */
 	public boolean isOpen() {
 		return !isSettled() && (status == null || OPEN_STATUSES.contains(status));

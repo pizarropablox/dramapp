@@ -337,6 +337,113 @@ class PointOrderOutcomeTests extends PointScenario {
 		assertThat(mercadoPago.printIds()).isEmpty();
 	}
 
+	/** «No se cobró» was stored but its answer never reached the phone, and now the cashier reads APROBADO. */
+	@Test
+	void approvedAfterNotPaidIsNotAnsweredAsCanceledWhileMercadoPagoIsDown() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		assertState(resolve(sale, "NOT_PAID"), "CANCELED");
+
+		var result = resolve(sale, "PAID");
+
+		assertProblem(result, HttpStatus.CONFLICT, "POINT_CLOSED_OTHERWISE");
+		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("no cobrada");
+		assertThat(result).bodyJson().doesNotHavePath("$.state");
+		assertThat(order(sale).getResolvedOutcome()).isEqualTo(PointOrderOutcome.NOT_PAID);
+
+		// Saying it again is the cashier's decision.
+		assertState(resolve(sale, "NOT_PAID"), "CANCELED");
+	}
+
+	@Test
+	void approvedAfterNotPaidIsPaidIfMercadoPagoSaysSo() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		resolve(sale, "NOT_PAID");
+		mercadoPago.down(false);
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+
+		assertThat(resolve(sale, "PAID")).hasStatus(HttpStatus.OK).bodyJson().isLenientlyEqualTo("""
+				{"state": "PAID", "saleStatus": "VOIDED", "paidOnVoidedSale": true}""");
+		assertThat(mercadoPago.printIds()).isEmpty();
+	}
+
+	@Test
+	void sayingNotPaidAgainNeverHidesThePaymentEither() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		resolve(sale, "NOT_PAID");
+		mercadoPago.down(false);
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+
+		assertThat(resolve(sale, "NOT_PAID")).bodyJson().isLenientlyEqualTo("""
+				{"state": "PAID", "paidOnVoidedSale": true}""");
+	}
+
+	@Test
+	void goingBackAfterNotPaidNeverHidesThePaymentEither() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		resolve(sale, "NOT_PAID");
+		assertState(cancel(sale), "CANCELED");
+		mercadoPago.down(false);
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+
+		assertState(cancel(sale), "PAID");
+		assertThat(order(sale).isPaidOnVoidedSale()).isTrue();
+	}
+
+	@Test
+	void approvedAfterNotPaidIsCanceledOnlyIfMercadoPagoSaysSo() {
+		long sale = sentSale();
+		mercadoPago.orderBecomes(mpOrderId(), "action_required", "check_on_terminal");
+		resolve(sale, "NOT_PAID");
+		assertProblem(resolve(sale, "PAID"), HttpStatus.CONFLICT, "POINT_CLOSED_OTHERWISE");
+
+		mercadoPago.orderBecomes(mpOrderId(), "canceled", "canceled");
+		assertState(resolve(sale, "PAID"), "CANCELED");
+	}
+
+	@Test
+	void withoutKnowingTheOrderNobodyCanTellWhichOutcomeIsTrue() {
+		long sale = cardSale();
+		mercadoPago.failNextOrder(Failure.LOST);
+		send(sale);
+		resolve(sale, "NOT_PAID");
+
+		assertProblem(resolve(sale, "PAID"), HttpStatus.CONFLICT, "POINT_CLOSED_OTHERWISE");
+		assertThat(mercadoPago.calls("createOrder")).hasSize(1);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "action_required", "canceled" })
+	void notPaidAfterApprovedNeverVoids(String status) {
+		long sale = sentSale();
+		mercadoPago.orderBecomes(mpOrderId(), "action_required", "check_on_terminal");
+		resolve(sale, "PAID");
+
+		mercadoPago.orderBecomes(mpOrderId(), status, status);
+		var result = resolve(sale, "NOT_PAID");
+
+		assertProblem(result, HttpStatus.CONFLICT, "POINT_CLOSED_OTHERWISE");
+		assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("como pagada");
+		assertActive(sale);
+		assertState(follow(sale), "PAID");
+	}
+
+	@Test
+	void notPaidAfterApprovedIsPaidIfMercadoPagoSaysSo() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		resolve(sale, "PAID");
+		mercadoPago.down(false);
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+
+		assertThat(resolve(sale, "NOT_PAID")).bodyJson().isLenientlyEqualTo("""
+				{"state": "PAID", "saleStatus": "ACTIVE", "pendingVerification": false}""");
+		assertActive(sale);
+	}
+
 	@Test
 	void anUnknownOrderCanBeClosedByHandWithoutSendingItsKeyAgain() {
 		long sale = cardSale();

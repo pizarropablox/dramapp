@@ -12,6 +12,7 @@ export const POINT_TEXTS = {
   waitingVale: 'Esperando que termine el vale…',
   busyVale: 'Toca “Actualizar” en la Point; si el vale sale, reintenta',
   busyUnknown: 'Si la Point muestra un cobro, cancélalo con la flecha atrás y reintenta',
+  contested: 'La venta se cerró como no cobrada y está anulada. Avisa al admin',
   expired: 'El cobro venció. Si la Point todavía muestra el monto, toca la flecha atrás',
   cancelFailed: 'Si la Point todavía muestra el monto, toca la flecha atrás',
   similarCharge: 'Si la Point pregunta por un cobro similar, toca “Continuar con cobro”',

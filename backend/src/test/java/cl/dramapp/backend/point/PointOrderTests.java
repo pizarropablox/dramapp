@@ -197,6 +197,32 @@ class PointOrderTests {
 		assertThat(order.getState()).isEqualTo(PointOrderState.PAID);
 	}
 
+	@ParameterizedTest
+	@CsvSource(nullValues = "-", value = {
+			// before, what Mercado Pago says, now, contradicts
+			"NOT_PAID, -, PAID, true", "NOT_PAID, action_required, PAID, true", "NOT_PAID, at_terminal, PAID, true",
+			"NOT_PAID, something_new, PAID, true", "NOT_PAID, canceled, PAID, false", "NOT_PAID, expired, PAID, false",
+			"NOT_PAID, failed, PAID, false", "NOT_PAID, processed, PAID, false", "NOT_PAID, refunded, PAID, false",
+			"NOT_PAID, action_required, NOT_PAID, false", "PAID, -, NOT_PAID, true",
+			"PAID, action_required, NOT_PAID, true", "PAID, canceled, NOT_PAID, true",
+			"PAID, processed, NOT_PAID, false", "PAID, -, PAID, false" })
+	void closedWithTheOtherOutcomeContradictsUnlessMercadoPagoSettlesIt(PointOrderOutcome before, String status,
+			PointOrderOutcome now, boolean contradicts) {
+		PointOrder order = order("action_required");
+		order.closeByHand(before, "barra");
+		if (status != null) {
+			order.recordStatus(status, null);
+		}
+
+		assertThat(order.contradicts(now)).isEqualTo(contradicts);
+	}
+
+	@Test
+	void whatWasNotClosedByHandContradictsNothing() {
+		assertThat(order("action_required").contradicts(PointOrderOutcome.PAID)).isFalse();
+		assertThat(order("canceled").contradicts(PointOrderOutcome.PAID)).isFalse();
+	}
+
 	@Test
 	void paidByMercadoPagoIsNeverPending() {
 		assertThat(order("processed").isPendingVerification()).isFalse();

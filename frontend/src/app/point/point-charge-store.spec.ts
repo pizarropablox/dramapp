@@ -76,6 +76,22 @@ describe('PointChargeStore', () => {
     expect(reload().charge()).toMatchObject(started);
   });
 
+  it('a reload does not forget that it is contested, and the next charge is not', () => {
+    const store = reload();
+    store.start(charge());
+    expect(store.contested()).toBe(false);
+    store.setContested(true);
+
+    const again = reload();
+    expect(again.contested()).toBe(true);
+    expect(again.charge()).toMatchObject({ ...charge(), startedAt: expect.any(Number) });
+    again.finish();
+    again.setContested(true);
+    expect(again.contested()).toBe(false);
+    again.start({ ...charge(), saleId: 183 });
+    expect(again.contested()).toBe(false);
+  });
+
   it('is sent on its own only once, and never after a reload', () => {
     const store = reload();
     store.start(charge());
