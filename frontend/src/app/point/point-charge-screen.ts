@@ -252,8 +252,9 @@ export class PointChargeScreen implements OnInit {
       view === 'attention' ||
       view === 'notResponding' ||
       view === 'uncertain' ||
-      // Mercado Pago does not answer: it can neither be canceled nor followed.
-      (view === 'cancelFailed' && this.failures() >= MAX_FAILURES)
+      // It can neither be canceled nor followed: Mercado Pago does not answer, or it is not known whether it exists.
+      (view === 'cancelFailed' &&
+        (this.failures() >= MAX_FAILURES || this.order()?.state === 'SENDING'))
     );
   });
   protected readonly canGoBack = computed(() =>

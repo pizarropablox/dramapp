@@ -581,6 +581,81 @@ describe('PointChargeScreen', () => {
     expect(returned).toEqual([]);
   });
 
+  /** The backend does not know whether the order exists, and answers that without asking Mercado Pago. */
+  const UNKNOWN: Partial<PointOrderResponse> = {
+    state: 'SENDING',
+    status: null,
+    cancelRequested: true,
+  };
+
+  it('with Mercado Pago down since it was sent, it is closed by hand after a reload too', () => {
+    render();
+    fail(sent(), 502, { code: 'POINT_UNAVAILABLE' });
+    tap('Volver al carrito');
+    fail(canceled(), 502, { code: 'POINT_UNAVAILABLE' });
+    fixture.destroy();
+
+    render(false);
+    answer(polled(), order(UNKNOWN));
+    for (let waited = 0; waited < CANCEL_SLOW_MS; waited += POLL_MS) {
+      next(UNKNOWN);
+    }
+    expect(title()).toBe('No se pudo cancelar');
+    tap('Reintentar');
+    fail(canceled(), 502, { code: 'POINT_UNAVAILABLE' });
+    expect(buttons()).toEqual([
+      'Reintentar',
+      'La Point dice APROBADO',
+      'No se cobró y la Point no muestra el monto',
+    ]);
+    tap('No se cobró y la Point no muestra el monto');
+    tap('Sí, seguro');
+    answer(resolved(), order({ ...UNKNOWN, state: 'CANCELED', saleStatus: 'VOIDED' }));
+    expect(returned).toHaveLength(1);
+  });
+
+  it('what the backend was still sending when going back is closed by hand once it ends', () => {
+    render();
+    sent().error(new ProgressEvent('error'));
+    fixture.detectChanges();
+    tap('Volver al carrito');
+    answer(canceled(), order(UNKNOWN));
+    for (let waited = 0; waited < CANCEL_SLOW_MS; waited += POLL_MS) {
+      expect(buttons()).toEqual([]);
+      next(UNKNOWN);
+    }
+    expect(title()).toBe('No se pudo cancelar');
+
+    // The backend refuses while its own call may still create the order.
+    tap('No se cobró y la Point no muestra el monto');
+    tap('Sí, seguro');
+    fail(resolved(), 409, { code: 'POINT_NOT_CLOSABLE' });
+    expect(returned).toEqual([]);
+    next(UNKNOWN);
+
+    tap('La Point dice APROBADO');
+    tap('Sí, seguro');
+    const request = resolved();
+    expect(request.request.body).toEqual({ outcome: 'PAID' });
+    answer(request, order({ ...UNKNOWN, state: 'PAID', pendingVerification: true, vale: VALE }));
+    expect(title()).toContain('pagado ✓');
+    expect(returned).toEqual([]);
+  });
+
+  it('what the backend was still sending may be created, and is then canceled again', () => {
+    render();
+    sent().error(new ProgressEvent('error'));
+    fixture.detectChanges();
+    tap('Volver al carrito');
+    answer(canceled(), order(UNKNOWN));
+    for (let waited = 0; waited < CANCEL_SLOW_MS; waited += POLL_MS) {
+      next({ state: 'CANCELING', status: 'at_terminal', cancelRequested: true });
+    }
+
+    // It exists: it is canceled, not closed by hand.
+    expect(buttons()).toEqual(['Reintentar']);
+  });
+
   it('keeps asking after failing to cancel a charge found after a reload', () => {
     render(false);
     fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
