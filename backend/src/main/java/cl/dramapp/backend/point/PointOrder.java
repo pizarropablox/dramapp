@@ -45,6 +45,14 @@ public class PointOrder {
 
 	private static final int MAX_STATUS_LENGTH = 64;
 
+	static final String VOIDED_BACK_TO_CART = "Vuelta al carrito (no cobrada)";
+
+	static final String VOIDED_ON_THE_POINT = "Cancelada en la Point";
+
+	static final String VOIDED_EXPIRED = "Cobro vencido en la Point";
+
+	static final String VOIDED_REJECTED = "Pago rechazado en la Point";
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -203,6 +211,34 @@ public class PointOrder {
 		}
 		this.creationError = error;
 		this.updatedAt = Instant.now();
+	}
+
+	/** The phone wants to go back to the cart. It only decides the reason of the void, if it is canceled. */
+	void requestCancel() {
+		if (cancelRequestedAt == null) {
+			this.cancelRequestedAt = Instant.now();
+			this.updatedAt = cancelRequestedAt;
+		}
+	}
+
+	/** Money that came in for a sale that no longer counts: shown, never fixed by the app. */
+	void markPaidOnVoidedSale() {
+		if (!paidOnVoidedSale) {
+			this.paidOnVoidedSale = true;
+			this.updatedAt = Instant.now();
+		}
+	}
+
+	/** Why the sale is voided when nothing was charged. */
+	String voidReason() {
+		if (cancelRequestedAt != null || resolvedOutcome == PointOrderOutcome.NOT_PAID) {
+			return VOIDED_BACK_TO_CART;
+		}
+		return switch (status) {
+			case "expired" -> VOIDED_EXPIRED;
+			case "failed" -> VOIDED_REJECTED;
+			case null, default -> VOIDED_ON_THE_POINT;
+		};
 	}
 
 	/**

@@ -1,6 +1,7 @@
 package cl.dramapp.backend.point;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,6 +28,8 @@ import cl.dramapp.backend.sale.SaleRepository;
  */
 @Service
 public class PointOrderService {
+
+	private static final String EXPIRED = "expired";
 
 	/** @param created whether a new order was sent */
 	public record Sent(PointOrderResponse order, boolean created) {
@@ -74,10 +77,14 @@ public class PointOrderService {
 		if (!attempt.call()) {
 			return new Sent(read(saleId), false);
 		}
+		return new Sent(dispatch(saleId, attempt), true);
+	}
+
+	private PointOrderResponse dispatch(Long saleId, Attempt attempt) {
 		MpResult<MpOrder> result = mercadoPago.createOrder(attempt.key(), attempt.terminalId(), attempt.amount());
 		return switch (result) {
-			case Ok<MpOrder>(MpOrder created) -> new Sent(store(saleId, attempt.orderId(),
-					attempt.first() ? created : current(created)), true);
+			case Ok<MpOrder>(MpOrder created) ->
+				store(saleId, attempt.orderId(), attempt.first() ? created : current(created));
 			case NoAnswer<MpOrder> lost -> {
 				endWithoutAnswer(saleId, attempt);
 				throw PointException.unavailable();
@@ -92,12 +99,86 @@ public class PointOrderService {
 		if (order.getMpOrderId() == null || order.isPaidInMercadoPago()) {
 			return read(saleId);
 		}
+		return ask(saleId, order);
+	}
+
+	private PointOrderResponse ask(Long saleId, PointOrder order) {
 		return switch (mercadoPago.getOrder(order.getMpOrderId())) {
 			case Ok<MpOrder>(MpOrder current) -> store(saleId, order.getId(), current);
 			case Rejected<MpOrder> rejected when rejected.reason() == Reason.NOT_CONFIGURED ->
 				throw PointException.notConfigured();
 			default -> throw PointException.unavailable();
 		};
+	}
+
+	/**
+	 * «Volver al carrito». Without an order nothing can be charged, so the sale is voided at once. Otherwise Mercado
+	 * Pago is asked to cancel, and the sale is voided only when it says so: it may have been paid meanwhile.
+	 */
+	public PointOrderResponse cancel(Long saleId) {
+		Optional<Attempt> attempt = transaction.execute(status -> requestCancel(saleId));
+		if (attempt.isEmpty()) {
+			return read(saleId);
+		}
+		if (attempt.get().call()) {
+			// An answer was lost: the order can only be canceled knowing its id.
+			dispatch(saleId, attempt.get());
+		}
+		PointOrder order = latest(saleId);
+		if (order.isSettled() || order.getMpOrderId() == null) {
+			return read(saleId);
+		}
+		if (mercadoPago.cancelOrder(order.getMpOrderId()) instanceof NoAnswer) {
+			throw PointException.unavailable();
+		}
+		// Refused or accepted, only its status tells.
+		PointOrderResponse current = ask(saleId, order);
+		if (current.state() == PointOrderState.ATTENTION) {
+			throw PointException.cannotCancel();
+		}
+		return current;
+	}
+
+	/** Empty when there is nothing to ask Mercado Pago. */
+	private Optional<Attempt> requestCancel(Long saleId) {
+		Sale sale = lockSale(saleId);
+		Optional<PointOrder> latest = pointOrderRepository.findFirstBySaleIdOrderByIdDesc(saleId);
+		if (latest.isEmpty() || latest.get().getState() == PointOrderState.NOT_SENT) {
+			if (!sale.isVoided()) {
+				requireChargeable(sale);
+				sale.voidSale(PointOrder.VOIDED_BACK_TO_CART);
+			}
+			return Optional.empty();
+		}
+		if (latest.get().isSettled()) {
+			return Optional.empty();
+		}
+		latest.get().requestCancel();
+		return Optional.of(again(latest.get()));
+	}
+
+	/**
+	 * Closes by hand, with what the Smart shows, an order without an outcome: it needs attention, Mercado Pago does not
+	 * answer, or it is not known whether it exists. Never while it can still be followed.
+	 */
+	public PointOrderResponse closeByHand(Long saleId, PointOrderOutcome outcome, String username) {
+		PointOrder order = latest(saleId);
+		if (order.isBeingSent()) {
+			throw PointException.notClosable();
+		}
+		if (!order.isSettled() && order.getMpOrderId() != null
+				&& mercadoPago.getOrder(order.getMpOrderId()) instanceof Ok<MpOrder>(MpOrder current)) {
+			PointOrderState state = store(saleId, order.getId(), current).state();
+			if (state == PointOrderState.SENT || state == PointOrderState.WAITING
+					|| state == PointOrderState.CANCELING) {
+				throw PointException.notClosable();
+			}
+		}
+		return update(saleId, order.getId(), locked -> {
+			if (!locked.isSettled()) {
+				locked.closeByHand(outcome, username);
+			}
+		});
 	}
 
 	/** Stores what is about to be sent before sending it, so a lost answer never leaves an unknown charge. */
@@ -187,16 +268,38 @@ public class PointOrderService {
 	}
 
 	private PointOrderResponse store(Long saleId, Long orderId, MpOrder answer) {
-		return update(saleId, orderId, order -> order.record(answer));
+		AtomicBoolean justExpired = new AtomicBoolean();
+		PointOrderResponse stored = update(saleId, orderId, order -> {
+			justExpired.set(EXPIRED.equals(answer.status()) && !order.isSettled());
+			order.record(answer);
+		});
+		if (justExpired.get()) {
+			// The Smart keeps showing the amount. Best effort: it may well be refused.
+			mercadoPago.cancelOrder(answer.id());
+		}
+		return stored;
 	}
 
 	private PointOrderResponse update(Long saleId, Long orderId, Consumer<PointOrder> change) {
 		return transaction.execute(status -> {
-			lockSale(saleId);
+			Sale sale = lockSale(saleId);
 			PointOrder order = pointOrderRepository.findByIdForUpdate(orderId).orElseThrow();
 			change.accept(order);
+			settle(sale, order);
 			return response(pointOrderRepository.saveAndFlush(order));
 		});
+	}
+
+	/** What an outcome means for the sale. It is voided only when nothing was charged. */
+	private static void settle(Sale sale, PointOrder order) {
+		if (order.isPaidInMercadoPago()) {
+			if (sale.isVoided()) {
+				order.markPaidOnVoidedSale();
+			}
+		}
+		else if (order.getState() == PointOrderState.CANCELED && !sale.isVoided()) {
+			sale.voidSale(order.voidReason());
+		}
 	}
 
 	private PointOrder latest(Long saleId) {
@@ -210,7 +313,9 @@ public class PointOrderService {
 	}
 
 	private PointOrderResponse read(Long saleId) {
-		return transaction.execute(status -> response(latest(saleId)));
+		return transaction.execute(status -> pointOrderRepository.findFirstBySaleIdOrderByIdDesc(saleId)
+			.map(this::response)
+			.orElseGet(() -> PointOrderResponse.withoutOrder(lockSale(saleId))));
 	}
 
 	private Sale lockSale(Long saleId) {

@@ -30,6 +30,19 @@ public class PointOrderController {
 		return ResponseEntity.status(sent.created() ? HttpStatus.CREATED : HttpStatus.OK).body(sent.order());
 	}
 
+	/** «Volver al carrito»: the sale is voided only once nothing can be charged. */
+	@PostMapping("/cancel")
+	public PointOrderResponse cancel(@PathVariable Long id) {
+		return pointOrderService.cancel(id);
+	}
+
+	/** Closing by hand, with what the Smart shows, when Mercado Pago gives no outcome. */
+	@PostMapping("/resolve")
+	public PointOrderResponse resolve(@PathVariable Long id, @Valid @RequestBody ResolvePointOrderRequest request,
+			Authentication authentication) {
+		return pointOrderService.closeByHand(id, request.outcome(), authentication.getName());
+	}
+
 	/** Asks Mercado Pago and stores what it says: the phones poll this while they are visible. */
 	@GetMapping
 	public PointOrderResponse follow(@PathVariable Long id) {

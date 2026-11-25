@@ -75,6 +75,25 @@ public class PointException extends ErrorResponseException {
 		return of(HttpStatus.BAD_GATEWAY, "POINT_UNAVAILABLE", "La Point no responde", "La Point no responde.");
 	}
 
+	/** The order waits for someone to look at the Smart. */
+	public static PointException cannotCancel() {
+		return of(HttpStatus.CONFLICT, "POINT_CANNOT_CANCEL", "No se puede cancelar",
+				"La Point necesita atención: mira su pantalla.");
+	}
+
+	/** Closing by hand is only for when Mercado Pago gives no outcome. */
+	public static PointException notClosable() {
+		return of(HttpStatus.CONFLICT, "POINT_NOT_CLOSABLE", "El cobro sigue en curso",
+				"El cobro sigue en curso en la Point: espera el pago o cancélalo.");
+	}
+
+	/** Voiding the sale or closing the event would leave the amount alive on the Smart. */
+	public static PointException orderOpen(PointOrder order) {
+		return of(HttpStatus.CONFLICT, "POINT_ORDER_OPEN", "Cobro en curso", "La venta " + order.getSale().getId()
+				+ " tiene un cobro en curso en la Point. Termínalo o cancélalo primero.")
+			.with("saleId", order.getSale().getId());
+	}
+
 	/** An answer was lost before: this one does not prove that the order does not exist. */
 	public static PointException uncertain() {
 		return of(HttpStatus.CONFLICT, "POINT_UNCERTAIN", "Cobro sin confirmar",

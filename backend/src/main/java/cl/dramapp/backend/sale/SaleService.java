@@ -37,12 +37,15 @@ public class SaleService {
 
 	private final StockOutRepository stockOutRepository;
 
+	private final List<SaleVoidGuard> voidGuards;
+
 	public SaleService(EventRepository eventRepository, ProductVariantRepository productVariantRepository,
-			SaleRepository saleRepository, StockOutRepository stockOutRepository) {
+			SaleRepository saleRepository, StockOutRepository stockOutRepository, List<SaleVoidGuard> voidGuards) {
 		this.eventRepository = eventRepository;
 		this.productVariantRepository = productVariantRepository;
 		this.saleRepository = saleRepository;
 		this.stockOutRepository = stockOutRepository;
+		this.voidGuards = voidGuards;
 	}
 
 	/**
@@ -106,7 +109,8 @@ public class SaleService {
 
 	/**
 	 * Voids a sale of the open event, keeping it stored with the time it was voided.
-	 * Checks, in order: the sale exists (404), its event is open (409), it is not voided yet (409).
+	 * Checks, in order: the sale exists (404), its event is open (409), it is not voided yet (409), nothing guards it
+	 * (409).
 	 */
 	@Transactional
 	public SaleResponse voidSale(Long id, String reason) {
@@ -118,6 +122,7 @@ public class SaleService {
 		if (sale.isVoided()) {
 			throw new SaleAlreadyVoidedException(sale);
 		}
+		voidGuards.forEach(guard -> guard.beforeVoid(sale));
 		sale.voidSale(reason);
 		return SaleResponse.from(saleRepository.saveAndFlush(sale));
 	}

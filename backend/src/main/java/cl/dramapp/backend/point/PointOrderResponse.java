@@ -15,6 +15,13 @@ public record PointOrderResponse(Long saleId, PointOrderState state, String stat
 		String terminalId, String terminalName, long secondsSinceCreated, boolean cancelRequested,
 		SaleStatus saleStatus, String voidReason, boolean pendingVerification, boolean paidOnVoidedSale) {
 
+	/** The sale was never sent to a Point. */
+	static PointOrderResponse withoutOrder(Sale sale) {
+		return new PointOrderResponse(sale.getId(), PointOrderState.NOT_SENT, null, null,
+				Math.addExact(sale.getSubtotal(), sale.getTip()), null, null, 0, false, sale.getStatus(),
+				sale.getVoidReason(), false, false);
+	}
+
 	static PointOrderResponse from(PointOrder order, String terminalName) {
 		Sale sale = order.getSale();
 		return new PointOrderResponse(sale.getId(), order.getState(), order.getStatus(), order.getStatusDetail(),
