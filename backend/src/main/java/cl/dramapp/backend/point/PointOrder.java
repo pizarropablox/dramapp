@@ -272,6 +272,11 @@ public class PointOrder {
 		return status != null && PAID_STATUSES.contains(status);
 	}
 
+	/** Charged and not given back: its vale is due. */
+	boolean isJustCharged() {
+		return getState() == PointOrderState.PAID && !REFUNDED.equals(status);
+	}
+
 	public PointOrderState getState() {
 		if (creationError != null) {
 			return PointOrderState.NOT_SENT;

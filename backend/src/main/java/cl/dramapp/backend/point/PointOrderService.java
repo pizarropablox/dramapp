@@ -21,6 +21,7 @@ import cl.dramapp.backend.sale.PaymentMethod;
 import cl.dramapp.backend.sale.Sale;
 import cl.dramapp.backend.sale.SaleNotFoundException;
 import cl.dramapp.backend.sale.SaleRepository;
+import cl.dramapp.backend.vale.ValeService;
 
 /**
  * Charges registered sales on a Point Smart (DRAMA-71). Mercado Pago is never called inside a transaction: one stores
@@ -56,23 +57,39 @@ public class PointOrderService {
 
 	private final PointProperties properties;
 
+	private final ValeService valeService;
+
 	private final TransactionTemplate transaction;
 
 	public PointOrderService(PointOrderRepository pointOrderRepository, SaleRepository saleRepository,
-			MercadoPagoClient mercadoPago, PointProperties properties, TransactionTemplate transaction) {
+			MercadoPagoClient mercadoPago, PointProperties properties, ValeService valeService,
+			TransactionTemplate transaction) {
 		this.pointOrderRepository = pointOrderRepository;
 		this.saleRepository = saleRepository;
 		this.mercadoPago = mercadoPago;
 		this.properties = properties;
+		this.valeService = valeService;
 		this.transaction = transaction;
 	}
 
 	/**
 	 * Sends the sale to a Smart, or answers the order it already has. A lost answer is asked again with the same key,
-	 * so it never charges twice.
+	 * so it never charges twice. Nothing is sent while a vale is on its way in that Smart: it would be refused.
+	 *
+	 * @param cancelPendingVale cancels the vale that keeps the Smart from charging
 	 */
-	public Sent send(Long saleId, String terminalId, String username) {
+	public Sent send(Long saleId, String terminalId, boolean cancelPendingVale, String username) {
 		Terminal terminal = properties.terminal(terminalId).orElseThrow(PointException::unknownTerminal);
+		if (needsNewOrder(saleId)) {
+			if (cancelPendingVale) {
+				valeService.clearTerminal(terminalId);
+			}
+			else {
+				valeService.saleHolding(terminalId).ifPresent(holding -> {
+					throw PointException.printing(holding);
+				});
+			}
+		}
 		Attempt attempt = reserve(saleId, terminal, username);
 		if (!attempt.call()) {
 			return new Sent(read(saleId), false);
@@ -93,9 +110,32 @@ public class PointOrderService {
 		};
 	}
 
+	/** A cash sale is paid when the cashier says so; a card one, when its order was. */
+	public boolean isPaid(Long saleId) {
+		return transaction.execute(status -> {
+			Sale sale = saleRepository.findById(saleId).orElseThrow(() -> new SaleNotFoundException(saleId));
+			return sale.getPaymentMethod() != PaymentMethod.MERCADO_PAGO
+					|| pointOrderRepository.findFirstBySaleIdOrderByIdDesc(saleId)
+						.filter(order -> order.getState() == PointOrderState.PAID)
+						.isPresent();
+		});
+	}
+
+	private boolean needsNewOrder(Long saleId) {
+		return transaction.execute(status -> {
+			requireChargeable(saleRepository.findById(saleId).orElseThrow(() -> new SaleNotFoundException(saleId)));
+			return pointOrderRepository.findFirstBySaleIdOrderByIdDesc(saleId)
+				.filter(order -> !order.isSettled() || order.getState() == PointOrderState.PAID)
+				.isEmpty();
+		});
+	}
+
 	/** Asks Mercado Pago for the sale's order and stores what it says. */
 	public PointOrderResponse follow(Long saleId) {
 		PointOrder order = latest(saleId);
+		if (order.getState() == PointOrderState.PAID) {
+			valeService.refreshLatest(saleId);
+		}
 		if (order.getMpOrderId() == null || order.isPaidInMercadoPago()) {
 			return read(saleId);
 		}
@@ -255,6 +295,7 @@ public class PointOrderService {
 	private PointException busy(String terminalId) {
 		return transaction.execute(status -> pointOrderRepository.findOpenByTerminalId(terminalId)
 			.map(open -> PointException.busy(open, terminalName(terminalId)))
+			.or(() -> valeService.saleStuckOn(terminalId).map(PointException::busyWithVale))
 			.orElseGet(PointException::busyUnknown));
 	}
 
@@ -281,13 +322,19 @@ public class PointOrderService {
 	}
 
 	private PointOrderResponse update(Long saleId, Long orderId, Consumer<PointOrder> change) {
-		return transaction.execute(status -> {
+		Optional<ValeService.Prepared> vale = transaction.execute(status -> {
 			Sale sale = lockSale(saleId);
 			PointOrder order = pointOrderRepository.findByIdForUpdate(orderId).orElseThrow();
+			boolean wasPaid = order.getState() == PointOrderState.PAID;
 			change.accept(order);
 			settle(sale, order);
-			return response(pointOrderRepository.saveAndFlush(order));
+			pointOrderRepository.saveAndFlush(order);
+			// Only the one that sees it become paid, so asking again never prints again.
+			return !wasPaid && order.isJustCharged() && !sale.isVoided()
+					? valeService.prepareOriginal(sale, order.getTerminalId(), order.getCreatedBy()) : Optional.empty();
 		});
+		vale.ifPresent(valeService::send);
+		return read(saleId);
 	}
 
 	/** What an outcome means for the sale. It is voided only when nothing was charged. */
@@ -323,7 +370,8 @@ public class PointOrderService {
 	}
 
 	private PointOrderResponse response(PointOrder order) {
-		return PointOrderResponse.from(order, terminalName(order.getTerminalId()));
+		return PointOrderResponse.from(order, terminalName(order.getTerminalId()),
+				valeService.describe(order.getSale().getId()).orElse(null));
 	}
 
 	private String terminalName(String terminalId) {

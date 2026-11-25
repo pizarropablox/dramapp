@@ -103,6 +103,20 @@ public abstract class PointScenario extends PointIntegrationTest {
 		return mvc.get().uri("/api/sales/" + saleId + "/point-order").exchange();
 	}
 
+	/** A card sale just paid on Smart 1, as its phone sees it. */
+	protected long paidSale() {
+		long sale = cardSale();
+		send(sale);
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+		follow(sale);
+		return sale;
+	}
+
+	/** The last print Mercado Pago accepted. */
+	protected String mpPrintId() {
+		return mercadoPago.printIds().getLast();
+	}
+
 	/** The last order Mercado Pago created. */
 	protected String mpOrderId() {
 		return mercadoPago.orderIds().getLast();

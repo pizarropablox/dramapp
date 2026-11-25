@@ -1,6 +1,8 @@
 package cl.dramapp.backend.vale;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 
 import cl.dramapp.backend.sale.Sale;
 import jakarta.persistence.Column;
@@ -22,6 +24,21 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "vale_print")
 public class ValePrint {
+
+	private static final String CREATED = "created";
+
+	private static final String PROCESSED = "processed";
+
+	/** Nothing will come out. */
+	private static final Set<String> GONE_STATUSES = Set.of("expired", "canceled");
+
+	private static final Set<String> BUSY_ERRORS = Set.of("already_queued_order_on_terminal",
+			"already_queued_order_for_terminal");
+
+	/** Longer than a call to print may take (connecting plus reading). */
+	private static final Duration SENDING_TIMEOUT = Duration.ofSeconds(12);
+
+	private static final int MAX_STATUS_LENGTH = 64;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -78,7 +95,15 @@ public class ValePrint {
 			throw new IllegalStateException("Vale print " + id + " was rejected: " + error);
 		}
 		this.mpActionId = mpActionId;
-		this.status = status;
+		recordStatus(status);
+	}
+
+	/** What Mercado Pago says. A late answer never takes back how it ended. */
+	void recordStatus(String next) {
+		if (PROCESSED.equals(status) || (status != null && GONE_STATUSES.contains(status)) || next.equals(status)) {
+			return;
+		}
+		this.status = next.length() <= MAX_STATUS_LENGTH ? next : next.substring(0, MAX_STATUS_LENGTH);
 		this.updatedAt = Instant.now();
 	}
 
@@ -98,6 +123,36 @@ public class ValePrint {
 
 	public boolean isRejected() {
 		return error != null;
+	}
+
+	public boolean isRejectedAsBusy() {
+		return error != null && BUSY_ERRORS.contains(error);
+	}
+
+	public ValeState getState() {
+		if (error != null) {
+			return ValeState.REJECTED;
+		}
+		if (mpActionId == null) {
+			return isYoungerThan(SENDING_TIMEOUT) ? ValeState.PENDING : ValeState.UNKNOWN;
+		}
+		if (CREATED.equals(status)) {
+			return ValeState.PENDING;
+		}
+		if (PROCESSED.equals(status)) {
+			return ValeState.PRINTED;
+		}
+		return GONE_STATUSES.contains(status) ? ValeState.GONE : ValeState.PRINTING;
+	}
+
+	/** Known not to be on its way any more. Not when the answer was lost. */
+	public boolean isOver() {
+		ValeState state = getState();
+		return state == ValeState.PRINTED || state == ValeState.REJECTED || state == ValeState.GONE;
+	}
+
+	public boolean isYoungerThan(Duration age) {
+		return requestedAt.isAfter(Instant.now().minus(age));
 	}
 
 	public Long getId() {

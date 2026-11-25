@@ -252,7 +252,7 @@ class PointOrderControllerTests extends PointScenario {
 			List<Future<Boolean>> answers = LongStream.of(sales).mapToObj(sale -> phones.submit((Callable<Boolean>) () -> {
 				start.await();
 				try {
-					return pointOrderService.send(sale, SMART_1, "barra").created();
+					return pointOrderService.send(sale, SMART_1, false, "barra").created();
 				}
 				catch (PointException busy) {
 					return false;
@@ -277,7 +277,7 @@ class PointOrderControllerTests extends PointScenario {
 			List<Future<PointOrderService.Sent>> answers = LongStream.range(0, 4)
 				.mapToObj(i -> phones.submit((Callable<PointOrderService.Sent>) () -> {
 					start.await();
-					return pointOrderService.send(sale, SMART_1, "barra");
+					return pointOrderService.send(sale, SMART_1, false, "barra");
 				}))
 				.toList();
 			start.countDown();

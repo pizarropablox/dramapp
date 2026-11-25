@@ -69,6 +69,9 @@ class SecurityRulesTests extends PostgresIntegrationTest {
 				Arguments.of(POST, "/api/sales/999999/point-order", Access.BARRA),
 				Arguments.of(POST, "/api/sales/999999/point-order/cancel", Access.BARRA),
 				Arguments.of(POST, "/api/sales/999999/point-order/resolve", Access.BARRA),
+				Arguments.of(GET, "/api/sales/999999/vale", Access.BARRA),
+				Arguments.of(POST, "/api/sales/999999/vale", Access.BARRA),
+				Arguments.of(POST, "/api/vales/latest/reprint", Access.BARRA),
 				Arguments.of(GET, "/api/refunds", Access.BARRA),
 				Arguments.of(POST, "/api/refunds", Access.BARRA),
 				Arguments.of(POST, "/api/refunds/999999/void", Access.BARRA),
@@ -119,6 +122,11 @@ class SecurityRulesTests extends PostgresIntegrationTest {
 				Arguments.of(GET, "/api/sales/999999/point-order/cancel", Access.NOBODY),
 				Arguments.of(GET, "/api/sales/999999/point-order/resolve", Access.NOBODY),
 				Arguments.of(POST, "/api/sales/999999/point-order/other", Access.NOBODY),
+				Arguments.of(PUT, "/api/sales/999999/vale", Access.NOBODY),
+				Arguments.of(DELETE, "/api/sales/999999/vale", Access.NOBODY),
+				Arguments.of(POST, "/api/sales/999999/vale/reprint", Access.NOBODY),
+				Arguments.of(GET, "/api/vales/latest/reprint", Access.NOBODY),
+				Arguments.of(GET, "/api/vales", Access.NOBODY),
 				Arguments.of(GET, "/", Access.NOBODY));
 	}
 

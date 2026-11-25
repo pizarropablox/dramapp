@@ -53,6 +53,20 @@ public class PointException extends ErrorResponseException {
 			.with("terminalName", terminalName);
 	}
 
+	/** A vale is on its way there: nothing was sent, so the phone just asks again. */
+	public static PointException printing(Long saleId) {
+		return of(HttpStatus.CONFLICT, "POINT_PRINTING", "Vale en curso", "Esperando que termine el vale de la venta "
+				+ saleId + ".")
+			.with("saleId", saleId);
+	}
+
+	/** A vale the Smart did not take keeps it from charging. */
+	public static PointException busyWithVale(Long saleId) {
+		return of(HttpStatus.CONFLICT, "POINT_BUSY_VALE", "Point ocupada",
+				"La Point está ocupada con el vale de la venta " + saleId + ".")
+			.with("saleId", saleId);
+	}
+
 	/** Mercado Pago says the terminal is busy, with nothing this app sent. */
 	public static PointException busyUnknown() {
 		return of(HttpStatus.CONFLICT, "POINT_BUSY_UNKNOWN", "Point ocupada",

@@ -26,7 +26,8 @@ public class PointOrderController {
 	@PostMapping
 	public ResponseEntity<PointOrderResponse> send(@PathVariable Long id,
 			@Valid @RequestBody SendPointOrderRequest request, Authentication authentication) {
-		PointOrderService.Sent sent = pointOrderService.send(id, request.terminalId(), authentication.getName());
+		PointOrderService.Sent sent = pointOrderService.send(id, request.terminalId(),
+				Boolean.TRUE.equals(request.cancelPendingVale()), authentication.getName());
 		return ResponseEntity.status(sent.created() ? HttpStatus.CREATED : HttpStatus.OK).body(sent.order());
 	}
 
