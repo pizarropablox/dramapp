@@ -240,6 +240,69 @@ describe('PointChargeScreen', () => {
     answer(polled(), order());
   });
 
+  it('«Reintentar» cuts the question in flight: there is never more than one', () => {
+    renderWith();
+    for (let i = 0; i < 3; i++) {
+      advance(POLL_MS);
+      fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
+    }
+    advance(POLL_MS);
+    const inFlight = polled();
+
+    tap('Reintentar');
+    expect(inFlight.cancelled).toBe(true);
+    const only = polled();
+    tap('Reintentar');
+    expect(only.cancelled).toBe(true);
+    answer(polled(), order());
+    expect(title()).toContain('Esperando pago…');
+
+    // And a single chain of questions goes on.
+    advance(POLL_MS);
+    answer(polled(), order());
+  });
+
+  it('coming back to the page with a question in flight does not ask another', () => {
+    renderWith();
+    advance(POLL_MS);
+    const inFlight = polled();
+    setHidden(true);
+    advance(5 * POLL_MS);
+    setHidden(false);
+
+    httpTesting.expectNone(URL);
+    answer(inFlight, order());
+  });
+
+  it('canceling cuts the question in flight: its older answer is ignored', () => {
+    renderWith();
+    advance(POLL_MS);
+    const inFlight = polled();
+    tap('Volver al carrito');
+
+    expect(inFlight.cancelled).toBe(true);
+    answer(canceled(), order({ state: 'CANCELING', cancelRequested: true }));
+    expect(title()).toBe('Cancelando en la Point…');
+    advance(POLL_MS);
+    answer(polled(), order({ state: 'CANCELING', cancelRequested: true }));
+  });
+
+  it('closing by hand cuts it too', () => {
+    renderWith({ state: 'ATTENTION', status: 'action_required' });
+    advance(POLL_MS);
+    const inFlight = polled();
+    tap('La Point dice APROBADO');
+    expect(inFlight.cancelled).toBe(false);
+    tap('Sí, seguro');
+
+    expect(inFlight.cancelled).toBe(true);
+    answer(resolved(), order({ state: 'PAID', status: 'action_required', vale: VALE }));
+    expect(title()).toContain('Pagado ✓');
+    advance(POLL_MS);
+    httpTesting.expectNone(URL);
+    httpTesting.expectOne('/api/sales/182/vale');
+  });
+
   it('counts the time without timing out', () => {
     renderWith();
     advance(POLL_MS);

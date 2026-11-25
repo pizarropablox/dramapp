@@ -12,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import { errorMessage } from '../shared/api-error';
 import { ClpPipe } from '../shared/clp';
 import {
@@ -135,6 +135,8 @@ export class PointChargeScreen implements OnInit {
   /** The charge of another sale that holds the Smart, once the cashier looks at it. */
   protected readonly other = signal<PointOrderResponse | null>(null);
 
+  /** The question in flight, if any. */
+  private polling?: Subscription;
   private waitSince: number | null = null;
   private clearSince: number | null = null;
 
@@ -300,7 +302,7 @@ export class PointChargeScreen implements OnInit {
   }
 
   private dispatch(cancelPendingVale: boolean): void {
-    this.timer.cancel();
+    this.stopPolling();
     this.sending.set(true);
     this.call(
       this.pointService.send(this.charge().saleId, this.charge().terminal.id, cancelPendingVale),
@@ -343,9 +345,15 @@ export class PointChargeScreen implements OnInit {
     this.timer.schedule(WAIT_VALE_MS, () => this.dispatch(cancelPendingVale));
   }
 
-  protected poll(): void {
+  /** Neither the next question nor the one in flight: its answer would be older than what is asked now. */
+  private stopPolling(): void {
     this.timer.cancel();
-    this.call(
+    this.polling?.unsubscribe();
+  }
+
+  protected poll(): void {
+    this.stopPolling();
+    this.polling = this.call(
       this.pointService.follow(this.charge().saleId),
       (order) => this.take(order),
       (error) => {
@@ -406,7 +414,7 @@ export class PointChargeScreen implements OnInit {
       this.leaveExpired();
       return;
     }
-    this.timer.cancel();
+    this.stopPolling();
     this.waitSince = this.clearSince = null;
     this.waitingVale.set(false);
     this.cancelFailed.set(false);
@@ -470,7 +478,7 @@ export class PointChargeScreen implements OnInit {
     if (!outcome || this.working()) {
       return;
     }
-    this.timer.cancel();
+    this.stopPolling();
     this.working.set(true);
     this.message.set(null);
     this.call(
@@ -555,7 +563,7 @@ export class PointChargeScreen implements OnInit {
     request: Observable<T>,
     next: (value: T) => void,
     failed: (error: unknown) => void,
-  ): void {
-    request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({ next, error: failed });
+  ): Subscription {
+    return request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({ next, error: failed });
   }
 }
