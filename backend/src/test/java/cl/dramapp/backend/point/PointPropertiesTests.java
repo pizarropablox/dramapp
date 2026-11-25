@@ -59,6 +59,16 @@ class PointPropertiesTests {
 			.withMessageContaining("DRAMAPP_POINT_PRINT_ON_TERMINAL");
 	}
 
+	@ParameterizedTest
+	@NullAndEmptySource
+	@ValueSource(strings = " ")
+	void aBlankTicketIsTheDefault(String ticket) {
+		PointProperties properties = properties("token", TWO, ticket, "prod");
+
+		assertThat(properties.printOnTerminal()).isEqualTo("no_ticket");
+		assertThatCode(properties::validate).doesNotThrowAnyException();
+	}
+
 	@Test
 	void neverShowsTheToken() {
 		PointProperties properties = properties("APP_USR-secret", TWO, "no_ticket", "prod");

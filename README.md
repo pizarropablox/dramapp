@@ -331,7 +331,7 @@ Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al 
 - **Si Mercado Pago no da un resultado,** se cierra a mano con lo que diga la Smart. «APROBADO» deja la venta cerrada a mano, por verificar en el panel de Mercado Pago.
 - Con un cobro abierto no se puede anular la venta ni cerrar el evento.
 
-**Apagarla:** borra `DRAMAPP_POINT_TERMINALS` en Render (reinicia el backend) y pasa cada teléfono a Point Mini. Si la terminal o el token están mal, el deploy no arranca y sigue la instancia anterior.
+**Apagarla:** borra `DRAMAPP_POINT_TERMINALS` en Render (reinicia el backend) y pasa cada teléfono a Point Mini. Si falta una variable o la lista está mal escrita, el deploy no arranca y sigue la instancia anterior; un token o un id equivocado recién se nota al cobrar («La Point no está configurada»).
 
 **No hay modo de prueba:** un backend local, o un preview de PR, con el token real cobra e imprime en la Smart de verdad.
 

@@ -22,7 +22,14 @@ import org.springframework.util.StringUtils;
 public record PointProperties(String accessToken, String terminals, String printOnTerminal, String keyPrefix,
 		String baseUrl) {
 
-	private static final Set<String> TICKETS = Set.of("no_ticket", "seller_ticket");
+	private static final String NO_TICKET = "no_ticket";
+
+	private static final Set<String> TICKETS = Set.of(NO_TICKET, "seller_ticket");
+
+	/** A variable left blank in Render's panel counts as not set. */
+	public PointProperties {
+		printOnTerminal = StringUtils.hasText(printOnTerminal) ? printOnTerminal.strip() : NO_TICKET;
+	}
 
 	/** @param name what the bar reads, e.g. «Smart 1» */
 	public record Terminal(String id, String name) {
