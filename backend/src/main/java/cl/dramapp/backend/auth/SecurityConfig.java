@@ -59,7 +59,8 @@ class SecurityConfig {
 			.requestMatchers(GET, "/api/sales").hasRole(Role.BARRA.name())
 			.requestMatchers(POST, "/api/sales", "/api/sales/*/void").hasRole(Role.BARRA.name())
 			// Charging with the Point Smart (DRAMA-71).
-			.requestMatchers(GET, "/api/point/terminals").hasRole(Role.BARRA.name())
+			.requestMatchers(GET, "/api/point/terminals", "/api/sales/*/point-order").hasRole(Role.BARRA.name())
+			.requestMatchers(POST, "/api/sales/*/point-order").hasRole(Role.BARRA.name())
 			.requestMatchers(GET, "/api/refunds").hasRole(Role.BARRA.name())
 			.requestMatchers(POST, "/api/refunds", "/api/refunds/*/void").hasRole(Role.BARRA.name())
 

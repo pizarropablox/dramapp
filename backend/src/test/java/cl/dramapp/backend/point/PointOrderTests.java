@@ -8,6 +8,7 @@ import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import cl.dramapp.backend.event.Event;
@@ -63,6 +64,43 @@ class PointOrderTests {
 		assertThat(order.getStatus()).isEqualTo("something_new");
 		assertThat(order.isOpen()).isFalse();
 		assertThat(order.isSettled()).isFalse();
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "processed, at_terminal, processed", "processed, canceled, processed",
+			"processed, refunded, refunded", "refunded, processed, refunded", "canceled, at_terminal, canceled",
+			"canceled, expired, canceled", "expired, created, expired", "failed, at_terminal, failed",
+			"canceled, processed, processed", "expired, processed, processed", "failed, processed, processed",
+			"expired, refunded, refunded", "at_terminal, created, created",
+			"action_required, processed, processed" })
+	void aLateAnswerNeverTakesBackAnOutcomeExceptForAPayment(String before, String answer, String after) {
+		PointOrder order = order(before);
+
+		order.recordStatus(answer, null);
+
+		assertThat(order.getStatus()).isEqualTo(after);
+	}
+
+	@Test
+	void aVeryLongStatusFitsItsColumn() {
+		assertThat(order("x".repeat(200)).getStatus()).hasSize(64);
+	}
+
+	@Test
+	void anAttemptWithoutAnswerIsUncertainUntilItIsRepeated() {
+		PointOrder order = order();
+		assertThat(order.isBeingSent()).isTrue();
+
+		order.endAttemptWithoutAnswer();
+		assertThat(order.isBeingSent()).isFalse();
+		assertThat(order.isUncertain()).isTrue();
+
+		order.startAttempt();
+		assertThat(order.isBeingSent()).isTrue();
+
+		order.recordStatus("created", "created");
+		assertThat(order.isBeingSent()).isFalse();
+		assertThat(order.isUncertain()).isFalse();
 	}
 
 	@Test

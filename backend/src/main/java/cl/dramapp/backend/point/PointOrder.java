@@ -1,9 +1,11 @@
 package cl.dramapp.backend.point;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Set;
 
+import cl.dramapp.backend.point.mp.MpOrder;
 import cl.dramapp.backend.sale.Sale;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,11 +29,21 @@ public class PointOrder {
 
 	private static final String PROCESSED = "processed";
 
+	private static final String REFUNDED = "refunded";
+
+	/** A status after which the money did move. */
+	private static final Set<String> PAID_STATUSES = Set.of(PROCESSED, REFUNDED);
+
 	/** The order still holds its terminal, as in the ux_point_order_open index. */
 	private static final Set<String> OPEN_STATUSES = Set.of("created", "at_terminal", "action_required");
 
 	/** Mercado Pago already gave an outcome. A status it never documented is neither open nor final. */
-	private static final Set<String> FINAL_STATUSES = Set.of(PROCESSED, "canceled", "expired", "failed", "refunded");
+	private static final Set<String> FINAL_STATUSES = Set.of(PROCESSED, "canceled", "expired", "failed", REFUNDED);
+
+	/** Longer than a call to create the order may take (connecting plus reading). */
+	private static final Duration ATTEMPT_TIMEOUT = Duration.ofSeconds(12);
+
+	private static final int MAX_STATUS_LENGTH = 64;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -110,8 +122,42 @@ public class PointOrder {
 		this.updatedAt = createdAt;
 	}
 
+	/** A call to create it starts now: while it lasts, nobody else may make another with the same key. */
+	void startAttempt() {
+		this.updatedAt = Instant.now();
+		this.lastCheckedAt = null;
+	}
+
+	/** The call ended without knowing whether the order exists. */
+	void endAttemptWithoutAnswer() {
+		this.lastCheckedAt = Instant.now();
+	}
+
+	boolean isBeingSent() {
+		return status == null && creationError == null && lastCheckedAt == null
+				&& updatedAt.isAfter(Instant.now().minus(ATTEMPT_TIMEOUT));
+	}
+
+	/** Mercado Pago may have the order or not: sending it again needs the same key. */
+	boolean isUncertain() {
+		return status == null && !isSettled();
+	}
+
+	/** Stores Mercado Pago's order, with its payment and operation number. */
+	void record(MpOrder order) {
+		recordStatus(order.status(), order.statusDetail());
+		this.mpOrderId = order.id();
+		if (order.paymentId() != null) {
+			this.mpPaymentId = order.paymentId();
+		}
+		if (order.referenceId() != null) {
+			this.referenceId = order.referenceId();
+		}
+	}
+
 	/**
-	 * Stores what Mercado Pago says. Also for an order closed by hand: it is how its payment gets verified.
+	 * Stores what Mercado Pago says. Also for an order closed by hand: it is how its payment gets verified. A late
+	 * answer never takes back an outcome, except for a payment arriving after all.
 	 *
 	 * @throws IllegalStateException if Mercado Pago rejected the order, so it does not exist
 	 */
@@ -120,12 +166,30 @@ public class PointOrder {
 			throw new IllegalStateException("Point order " + id + " was never created");
 		}
 		Instant now = Instant.now();
+		this.lastCheckedAt = now;
+		if (takesBackAnOutcome(status)) {
+			return;
+		}
 		if (!Objects.equals(this.status, status) || !Objects.equals(this.statusDetail, statusDetail)) {
-			this.status = status;
-			this.statusDetail = statusDetail;
+			this.status = fit(status);
+			this.statusDetail = fit(statusDetail);
 			this.updatedAt = now;
 		}
-		this.lastCheckedAt = now;
+	}
+
+	private boolean takesBackAnOutcome(String next) {
+		if (REFUNDED.equals(status)) {
+			return !REFUNDED.equals(next);
+		}
+		if (PROCESSED.equals(status)) {
+			return !PAID_STATUSES.contains(next);
+		}
+		return status != null && FINAL_STATUSES.contains(status) && !status.equals(next)
+				&& !PAID_STATUSES.contains(next);
+	}
+
+	private static String fit(String text) {
+		return text == null || text.length() <= MAX_STATUS_LENGTH ? text : text.substring(0, MAX_STATUS_LENGTH);
 	}
 
 	/**
@@ -165,6 +229,28 @@ public class PointOrder {
 	/** It has an outcome: from Mercado Pago, closed by hand, or it was never created. */
 	public boolean isSettled() {
 		return resolvedOutcome != null || creationError != null || (status != null && FINAL_STATUSES.contains(status));
+	}
+
+	/** Mercado Pago charged it, whatever was done by hand. */
+	public boolean isPaidInMercadoPago() {
+		return status != null && PAID_STATUSES.contains(status);
+	}
+
+	public PointOrderState getState() {
+		if (creationError != null) {
+			return PointOrderState.NOT_SENT;
+		}
+		if (resolvedOutcome != null) {
+			return resolvedOutcome == PointOrderOutcome.PAID ? PointOrderState.PAID : PointOrderState.CANCELED;
+		}
+		return switch (status) {
+			case null -> PointOrderState.SENDING;
+			case "created" -> cancelRequestedAt == null ? PointOrderState.SENT : PointOrderState.CANCELING;
+			case "at_terminal" -> cancelRequestedAt == null ? PointOrderState.WAITING : PointOrderState.CANCELING;
+			case PROCESSED, REFUNDED -> PointOrderState.PAID;
+			case "canceled", "expired", "failed" -> PointOrderState.CANCELED;
+			default -> PointOrderState.ATTENTION;
+		};
 	}
 
 	/** «Cerrada a mano, por verificar»: closed as paid and Mercado Pago has not shown the payment yet. */
