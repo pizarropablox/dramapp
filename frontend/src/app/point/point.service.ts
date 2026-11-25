@@ -1,7 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Service } from '@angular/core';
 import { Observable, timeout } from 'rxjs';
-import { PointOrderOutcome, PointOrderResponse, PointTerminal, ValeResponse } from './point';
+import {
+  PointOrderOutcome,
+  PointOrderResponse,
+  PointSaleMark,
+  PointTerminal,
+  ValeResponse,
+} from './point';
 
 /** Longer than the backend waits for Mercado Pago (11 s); past it, it counts as no answer. */
 export const POINT_REQUEST_TIMEOUT_MS = 15_000;
@@ -15,6 +21,13 @@ export class PointService {
   terminals(): Observable<PointTerminal[]> {
     return this.http
       .get<PointTerminal[]>('/api/point/terminals')
+      .pipe(timeout(POINT_REQUEST_TIMEOUT_MS));
+  }
+
+  /** Sales of the open event whose charge someone must look at. */
+  markedSales(): Observable<PointSaleMark[]> {
+    return this.http
+      .get<PointSaleMark[]>('/api/point/sales')
       .pipe(timeout(POINT_REQUEST_TIMEOUT_MS));
   }
 

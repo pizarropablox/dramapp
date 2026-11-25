@@ -212,6 +212,8 @@
     [loading]="recentSales.isLoading() || recentRefunds.isLoading()"
     [error]="recentSales.error() ? recentErrorMessage() : null"
     [refundsError]="!!recentRefunds.error()"
+    [pointMarks]="pointMarks.hasValue() ? pointMarks.value() : []"
+    [pointMarksError]="!!pointMarks.error()"
     [hasOpenEvent]="!!openEvent()"
     [lastValeSaleId]="lastVale()?.saleId ?? null"
     (reprintRequested)="openReprint()"

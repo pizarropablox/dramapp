@@ -51,6 +51,14 @@ export interface PointOrderResponse {
   vale: ValeResponse | null;
 }
 
+/** Mirrors the backend's PointSaleMark: a sale whose charge someone must look at. */
+export interface PointSaleMark {
+  saleId: number;
+  amount: number;
+  pendingVerification: boolean;
+  paidOnVoidedSale: boolean;
+}
+
 /** Codes of the ProblemDetail the Point endpoints answer with (PointException, ValeException). */
 export type PointErrorCode =
   | 'POINT_TERMINAL_UNKNOWN'

@@ -94,6 +94,7 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - Un vale en curso hace que MP rechace cobros y vales en esa Smart: `POINT_PRINTING` no manda la orden durante 45 s. Las esperas las hace el teléfono, nunca un hilo del backend.
 - El papel tiene 32 columnas y la Smart achica lo que no cabe: todo se parte en `ValeContent`. Sin QR; no usar `{left}` ni `{w}`. Los vasos promo salen de `PromoGlasses`, la misma regla del Excel.
 - El token vive solo en variables de entorno. No se guardan ni registran datos de tarjeta, y los logs no llevan bodies. No hay modo de prueba: con el token real, todo cobra de verdad.
+- «Ventas» muestra las marcas «Cerrada a mano, por verificar» y «Cobro recibido en una venta anulada» (`GET /api/point/sales`), sin consultar a MP. `barra` con Point Mini no las pide.
 - Los textos de la barra están en `point-texts.ts`. El cobro en curso se guarda en `dramapp.pointCharge`, aparte del carrito; después de recargar nunca se envía solo.
 - Resultados con la Smart real: `RESULTADOS.md` de la rama local `spike/DRAMA-70-point-smart`.
 

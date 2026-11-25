@@ -20,6 +20,7 @@ import { PointOrderResponse } from '../point/point';
 import { PointChargeScreen } from '../point/point-charge-screen';
 import { cartOfCharge, chargeLines, PointChargeStore } from '../point/point-charge-store';
 import { PointTerminalStore } from '../point/point-terminal-store';
+import { PointService } from '../point/point.service';
 import { backToCartNotice } from '../point/point-texts';
 import { ValeDialog } from '../point/vale-dialog';
 import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
@@ -129,6 +130,7 @@ export class SalePage {
   protected readonly cart = inject(CartStore);
   private readonly pointTerminal = inject(PointTerminalStore);
   private readonly pointCharge = inject(PointChargeStore);
+  private readonly pointService = inject(PointService);
 
   /** The sale being charged with a Point Smart; after a reload it is found again. */
   protected readonly charge = computed(() =>
@@ -221,6 +223,18 @@ export class SalePage {
   protected readonly recentRefunds = rxResource({
     params: () => (this.recentOpen() ? true : undefined),
     stream: () => this.refundService.recent(),
+  });
+
+  /**
+   * Sales whose charge on the Point someone must look at. Not asked by barra with a Point Mini, where nothing
+   * changes; admin always sees them.
+   */
+  protected readonly pointMarks = rxResource({
+    params: () =>
+      this.recentOpen() && (this.pointTerminal.terminal() || this.auth.isAdmin())
+        ? true
+        : undefined,
+    stream: () => this.pointService.markedSales(),
   });
 
   /** The sale whose void is being confirmed, from the confirmation or from the list. */
@@ -620,6 +634,7 @@ export class SalePage {
   protected reloadRecent(): void {
     this.recentSales.reload();
     this.recentRefunds.reload();
+    this.pointMarks.reload();
   }
 
   protected startVoid(sale: SaleResponse): void {

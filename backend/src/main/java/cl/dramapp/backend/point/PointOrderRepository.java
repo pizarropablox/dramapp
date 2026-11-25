@@ -29,6 +29,16 @@ public interface PointOrderRepository extends JpaRepository<PointOrder, Long> {
 			order by o.id""")
 	List<PointOrder> findUnsettledByEvent(Event event);
 
+	/** Charges of the open event someone must look at (see PointOrder.isPendingVerification). */
+	@Query("""
+			select o from PointOrder o join fetch o.sale
+			where o.sale.event.status = cl.dramapp.backend.event.EventStatus.OPEN
+			and (o.paidOnVoidedSale = true
+				or (o.resolvedOutcome = cl.dramapp.backend.point.PointOrderOutcome.PAID
+					and (o.status is null or o.status <> 'processed')))
+			order by o.id""")
+	List<PointOrder> findMarked();
+
 	/** The order holding a terminal, as in the ux_point_order_open index. */
 	@Query("""
 			select o from PointOrder o

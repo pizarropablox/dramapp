@@ -5,13 +5,13 @@ import { provideRouter } from '@angular/router';
 import { MemoryStorage } from '../../testing/memory-storage';
 import { AuthStore } from '../auth/auth-store';
 import { EventResponse } from '../event/event';
-import { PointOrderResponse, ValeResponse } from '../point/point';
+import { PointOrderResponse, PointSaleMark, ValeResponse } from '../point/point';
 import { POINT_CHARGE_STORAGE_KEY } from '../point/point-charge-store';
 import { POINT_STORAGE, PointTerminalStore } from '../point/point-terminal-store';
 import { ProductResponse } from '../product/product';
 import { CART_STORAGE } from './cart-storage';
 import { CartStore } from './cart-store';
-import { PaymentMethod } from './sale';
+import { PaymentMethod, SaleResponse } from './sale';
 import { SalePage } from './sale-page';
 
 const OPEN_EVENT: EventResponse = {
@@ -61,6 +61,23 @@ function order(changes: Partial<PointOrderResponse> = {}): PointOrderResponse {
     paidOnVoidedSale: false,
     vale: null,
     ...changes,
+  };
+}
+
+/** Newest first by id. */
+function recentSale(id: number): SaleResponse {
+  return {
+    id,
+    eventId: 7,
+    paymentMethod: 'MERCADO_PAGO',
+    lines: [],
+    subtotal: 5000,
+    tipAmount: 0,
+    amountToCharge: 5000,
+    createdAt: `2026-11-28T04:${id - 160}:00Z`,
+    status: 'ACTIVE',
+    voidedAt: null,
+    voidReason: null,
   };
 }
 
@@ -206,6 +223,17 @@ describe('SalePage with a Point Smart', () => {
         ...changes,
       }),
     );
+    await update();
+  }
+
+  /** What opening Ventas asks for. */
+  async function flushRecent(
+    marks: PointSaleMark[] = [],
+    sales: SaleResponse[] = [],
+  ): Promise<void> {
+    httpTesting.expectOne('/api/sales').flush(sales);
+    httpTesting.expectOne('/api/refunds').flush([]);
+    httpTesting.expectOne('/api/point/sales').flush(marks);
     await update();
   }
 
@@ -388,9 +416,7 @@ describe('SalePage with a Point Smart', () => {
     await tap('Siguiente venta');
 
     await tap('Ventas');
-    httpTesting.expectOne('/api/sales').flush([]);
-    httpTesting.expectOne('/api/refunds').flush([]);
-    await update();
+    await flushRecent();
     await tap('Reimprimir vale de la venta #182');
     httpTesting.expectOne('/api/sales/182/vale').flush(vale());
     await update();
@@ -408,11 +434,67 @@ describe('SalePage with a Point Smart', () => {
   it('offers no reprint on a phone that has not printed', async () => {
     await setup();
     await tap('Ventas');
+    await flushRecent();
+
+    expect(root().textContent).not.toContain('Reimprimir');
+  });
+
+  it('marks in Ventas the charges someone must look at', async () => {
+    await setup();
+    await tap('Ventas');
+    await flushRecent(
+      [
+        { saleId: 181, amount: 5000, pendingVerification: true, paidOnVoidedSale: false },
+        { saleId: 180, amount: 18000, pendingVerification: false, paidOnVoidedSale: true },
+      ],
+      [recentSale(182), recentSale(181), recentSale(180)],
+    );
+
+    const rows = [...root().querySelectorAll('li.sale')].map((row) => row.textContent!);
+    expect(rows[0]).not.toContain('por verificar');
+    expect(rows[1]).toContain('Cerrada a mano, por verificar');
+    expect(rows[2]).toContain('Cobro recibido en una venta anulada ($18.000)');
+    expect(rows[2]).not.toContain('por verificar');
+  });
+
+  it('says when those marks could not be loaded, and still shows the sales', async () => {
+    await setup();
+    await tap('Ventas');
+    httpTesting.expectOne('/api/sales').flush([recentSale(182)]);
+    httpTesting.expectOne('/api/refunds').flush([]);
+    httpTesting.expectOne('/api/point/sales').error(new ProgressEvent('error'));
+    await update();
+
+    expect(root().textContent).toContain('No se pudieron cargar los avisos de la Point.');
+    expect(root().querySelectorAll('li.sale')).toHaveLength(1);
+  });
+
+  it('barra with a Point Mini does not ask for them', async () => {
+    TestBed.inject(PointTerminalStore).set(null);
+    await setup();
+    await tap('Ventas');
     httpTesting.expectOne('/api/sales').flush([]);
     httpTesting.expectOne('/api/refunds').flush([]);
     await update();
 
-    expect(root().textContent).not.toContain('Reimprimir');
+    httpTesting.expectNone('/api/point/sales');
+  });
+
+  it('admin sees them with a Point Mini too', async () => {
+    TestBed.inject(PointTerminalStore).set(null);
+    TestBed.inject(AuthStore).signedIn({
+      username: 'admin',
+      role: 'ADMIN',
+      expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000).toISOString(),
+    });
+    await setup();
+    await tap('Ventas');
+    await flushRecent(
+      [{ saleId: 182, amount: 5000, pendingVerification: true, paidOnVoidedSale: false }],
+      [recentSale(182)],
+    );
+
+    expect(root().textContent).toContain('Cerrada a mano, por verificar');
   });
 
   it('a failed registration starts no charge', async () => {
