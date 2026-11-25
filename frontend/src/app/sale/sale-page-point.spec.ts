@@ -497,6 +497,65 @@ describe('SalePage with a Point Smart', () => {
     expect(root().textContent).toContain('Cerrada a mano, por verificar');
   });
 
+  /** Confirmed, and the answer never came. */
+  async function loseTheAnswer(): Promise<void> {
+    cart().add(RED_BULL, RED_BULL.variants[0]);
+    await update();
+    await tap(
+      TestBed.inject(PointTerminalStore).terminal() ? 'Mercado Pago · Smart 1' : 'Mercado Pago',
+    );
+    await tap('Confirmar venta');
+    httpTesting.expectOne({ method: 'POST', url: '/api/sales' }).error(new ProgressEvent('error'));
+    await update();
+  }
+
+  function noticeText(): string {
+    return root().querySelector('app-pending-sale-notice')!.textContent!.replace(/\s+/g, ' ');
+  }
+
+  it('a sale registered without an answer is voided and confirmed again', async () => {
+    await setup();
+    await loseTheAnswer();
+
+    expect(screen()).toBeNull();
+    expect(noticeText()).toContain('Ya está: anúlala en Ventas y confírmala de nuevo');
+    expect(button('Ya está: vaciar')).toBeUndefined();
+
+    await tap('Ver ventas');
+    await flushRecent([], [recentSale(182)]);
+    await tap('Anular');
+    await tap('Anular venta');
+    httpTesting
+      .expectOne('/api/sales/182/void')
+      .flush({ ...recentSale(182), status: 'VOIDED', voidedAt: '2026-11-28T04:33:00Z' });
+    await update();
+    await tap('Cerrar');
+    await tap('Anulada o no está: seguir');
+    httpTesting.expectOne('/api/products').flush([RED_BULL, WATER]);
+    await update();
+    expect(cart().itemCount()).toBe(1);
+
+    // The payment method is still chosen: it is confirmed again, and now it is charged.
+    await tap('Confirmar venta');
+    httpTesting
+      .expectOne({ method: 'POST', url: '/api/sales' })
+      .flush({ ...recentSale(183), amountToCharge: 3500 });
+    await update();
+    httpTesting.expectOne({ method: 'POST', url: '/api/sales/183/point-order' }).flush(order());
+    await update();
+    expect(screen()).not.toBeNull();
+  });
+
+  it('with a Point Mini that notice is as always', async () => {
+    TestBed.inject(PointTerminalStore).set(null);
+    await setup();
+    await loseTheAnswer();
+
+    expect(noticeText()).not.toContain('anúlala');
+    expect(button('Ya está: vaciar')).toBeTruthy();
+    expect(button('No está: seguir')).toBeTruthy();
+  });
+
   it('a failed registration starts no charge', async () => {
     await setup();
     cart().add(RED_BULL, RED_BULL.variants[0]);
