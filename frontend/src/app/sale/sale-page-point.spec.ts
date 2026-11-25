@@ -1,11 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { MemoryStorage } from '../../testing/memory-storage';
 import { AuthStore } from '../auth/auth-store';
 import { EventResponse } from '../event/event';
 import { PointOrderResponse, PointSaleMark, ValeResponse } from '../point/point';
+import { PointChargeScreen } from '../point/point-charge-screen';
 import { POINT_CHARGE_STORAGE_KEY } from '../point/point-charge-store';
 import { POINT_STORAGE, PointTerminalStore } from '../point/point-terminal-store';
 import { ProductResponse } from '../product/product';
@@ -311,6 +313,32 @@ describe('SalePage with a Point Smart', () => {
     );
     expect(storage.getItem(POINT_CHARGE_STORAGE_KEY)).toBeNull();
   });
+
+  it.each([
+    { state: 'PAID', status: 'processed' },
+    { state: 'PAID', status: 'action_required', pendingVerification: true },
+    { state: 'CANCELED', status: 'processed' },
+    { state: 'CANCELED', status: 'refunded' },
+    { state: 'CANCELED', status: 'canceled', paidOnVoidedSale: true },
+  ] as Partial<PointOrderResponse>[])(
+    'never brings back a paid order, even if the screen returned it: %o',
+    async (paid) => {
+      await setup();
+      await sell();
+      sent().flush(order());
+      await update();
+
+      const charging = fixture.debugElement.query(By.directive(PointChargeScreen));
+      (charging.componentInstance as PointChargeScreen).returned.emit(
+        order({ saleStatus: 'VOIDED', ...paid }),
+      );
+      await update();
+
+      expect(cart().isEmpty()).toBe(true);
+      expect(screen()).not.toBeNull();
+      expect(storage.json(POINT_CHARGE_STORAGE_KEY)).toMatchObject({ saleId: 182 });
+    },
+  );
 
   it('finds the charge again after a reload, without sending it again', async () => {
     await setup();
