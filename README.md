@@ -114,7 +114,7 @@ La configuración de Render vive en [`render.yaml`](render.yaml) (Blueprint) y l
 | Render, `dramapp-backend` | `DRAMAPP_ADMIN_PASSWORD` | hash `{bcrypt}...` de la clave de `admin` (secreto) |
 | Render, `dramapp-backend` | `DRAMAPP_POINT_TERMINALS` | Points Smart como `id=nombre;id=nombre`. **Vacía: la función queda apagada** (ver [Cobrar con la Point Smart](#cobrar-con-la-point-smart)) |
 | Render, `dramapp-backend` | `DRAMAPP_POINT_ACCESS_TOKEN` | Access Token productivo de Mercado Pago (secreto) |
-| Render, `dramapp-backend` | `DRAMAPP_POINT_KEY_PREFIX` | `prod` (en local, otro valor: comparten la cuenta de Mercado Pago) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_KEY_PREFIX` | `prod26` en el simulacro y `prod27` en la fiesta; en local, otro valor. **Nunca se reutiliza** (ver [Cobrar con la Point Smart](#cobrar-con-la-point-smart)) |
 | Render, `dramapp-backend` | `DRAMAPP_POINT_PRINT_ON_TERMINAL` | opcional: `no_ticket` (por defecto) o `seller_ticket` |
 | Render, `dramapp` | `NODE_VERSION` | `24.20.0` (ya viene en `render.yaml`) |
 
@@ -335,6 +335,13 @@ Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al 
 
 **No hay modo de prueba:** un backend local, o un preview de PR, con el token real cobra e imprime en la Smart de verdad.
 
+**El prefijo de las claves.** `DRAMAPP_POINT_KEY_PREFIX` distingue en Mercado Pago la venta 182 de una base y la de otra. Usa uno para el simulacro (`prod26`) y otro para la fiesta (`prod27`), y **nunca reutilices un prefijo después de limpiar o restaurar la base**: los números de venta se repetirían, y Mercado Pago rechazaría el cobro o devolvería uno viejo.
+
+#### Checklist del admin antes de abrir
+
+- [ ] `DRAMAPP_POINT_KEY_PREFIX` es el de hoy (`prod26` simulacro, `prod27` fiesta) y no se usó antes de limpiar o restaurar la base.
+- [ ] Un cobro de prueba llega a la Smart y se cancela desde la app.
+
 #### Checklist de la barra
 
 - [ ] Smart enchufada, con papel y en la espera de PDV. Si se apagó o perdió conexión, toca **«Actualizar»** en esa pantalla.
@@ -344,6 +351,13 @@ Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al 
 - [ ] No toques «Imprimir comprobante» por costumbre: es el comprobante de Mercado Pago, no el vale.
 - [ ] La pantalla se apaga al minuto. Un cobro la enciende; si no, aprieta el botón lateral.
 - [ ] Una Point Mini de reserva. Con la Smart en PDV no se puede cobrar a mano.
+
+#### Checklist del cierre
+
+- [ ] Ningún teléfono muestra un cobro.
+- [ ] Las ventas «Cerrada a mano, por verificar» (en Ventas) están revisadas en el panel de Mercado Pago.
+- [ ] Recién entonces, cierra el evento.
+- [ ] Cuadra los cobros de la app con el panel de Mercado Pago: un pago que llegó tarde, sobre una venta anulada, solo se ve ahí.
 
 ### Límites del plan gratis
 
