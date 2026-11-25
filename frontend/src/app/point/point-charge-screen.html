@@ -71,9 +71,12 @@
         <p>Cerrada a mano, por verificar</p>
       }
       @if (vale(); as printed) {
-        <app-vale-panel [initial]="printed" [terminal]="charge().terminal" />
-      } @else if (order()?.status === 'processed') {
-        <p role="status">Imprimiendo vale…</p>
+        <app-vale-panel
+          [initial]="printed"
+          [terminal]="charge().terminal"
+          [titled]="true"
+          (printingChange)="printing.set($event)"
+        />
       }
       <button type="button" class="main" (click)="finished.emit()">Siguiente venta</button>
     }

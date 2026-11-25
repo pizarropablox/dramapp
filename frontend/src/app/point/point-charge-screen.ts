@@ -225,7 +225,10 @@ export class PointChargeScreen implements OnInit {
       case 'expired':
         return 'El cobro venció';
       case 'paid':
-        return this.order()?.cancelRequested ? 'Ya estaba pagado ✓' : 'Pagado ✓';
+        return (
+          (this.order()?.cancelRequested ? 'Ya estaba pagado ✓' : 'Pagado ✓') +
+          (this.printing() ? ` · ${POINT_TEXTS.printing}` : '')
+        );
       case 'paidVoided':
         return 'Cobro recibido en una venta anulada';
       case 'done':
@@ -234,6 +237,8 @@ export class PointChargeScreen implements OnInit {
   });
 
   protected readonly vale = computed(() => this.order()?.vale ?? null);
+  /** The Smart has still to take the vale. */
+  protected readonly printing = signal(false);
   protected readonly similarHint = computed(
     () => this.order()?.state === 'WAITING' && this.elapsed() >= SIMILAR_CHARGE_S,
   );
@@ -360,6 +365,7 @@ export class PointChargeScreen implements OnInit {
       this.cancelSince.set(now);
     }
     if (order.state === 'PAID') {
+      this.printing.set(this.valeComing(order) || order.vale?.state === 'PENDING');
       if (this.valeComing(order)) {
         this.timer.schedule(POLL_MS, () => this.poll());
       }

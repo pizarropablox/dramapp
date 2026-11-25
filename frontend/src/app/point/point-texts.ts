@@ -2,7 +2,8 @@ import { PointOrderResponse, ValeResponse } from './point';
 
 /** What the bar reads while charging with a Smart, in one place so the words can be changed quickly. */
 export const POINT_TEXTS = {
-  notReached: 'La Point no ha recibido el cobro. ¿Está prendida y con señal?',
+  notReached:
+    'La Point no ha recibido el cobro. Si la pantalla está apagada, aprieta el botón lateral. Si no aparece, toca “Actualizar”.',
   attention: 'La Point necesita atención: mira su pantalla',
   notConfigured: 'La Point no está configurada. Avisa al admin',
   notResponding: 'La Point no responde. Puedes volver al carrito y cobrar con una Point Mini',
@@ -13,7 +14,9 @@ export const POINT_TEXTS = {
   expired: 'El cobro venció. Si la Point todavía muestra el monto, toca la flecha atrás',
   cancelFailed: 'Si la Point todavía muestra el monto, toca la flecha atrás',
   similarCharge: 'Si la Point pregunta por un cobro similar, toca “Continuar con cobro”',
-  closeScreen: 'Toca “Ir al inicio” en la Point',
+  /** After «Pagado ✓ · »: the Smart takes the vale only after leaving «Cobro realizado». */
+  printing: 'Imprimiendo vale… Toca “Ir al inicio” en la Point.',
+  printed: 'Vale impreso ✓',
   didItComeOut: '¿Salió el vale?',
   mayBeDouble: 'Puede salir doble, quédate con uno',
   busy: 'La Point está ocupada',
@@ -27,7 +30,7 @@ export const VALE_OVERDUE_S = 45;
 export function valeText(vale: ValeResponse | null): string {
   switch (vale?.state) {
     case 'PRINTED':
-      return 'Vale impreso ✓';
+      return POINT_TEXTS.printed;
     case 'REJECTED':
       return vale.busy
         ? 'La Point está ocupada: el vale no salió'

@@ -274,7 +274,9 @@ describe('PointChargeScreen', () => {
     expect(title()).toContain('Esperando pago…');
 
     next({ state: 'SENT', status: 'created', secondsSinceCreated: 11 });
-    expect(title()).toBe('La Point no ha recibido el cobro. ¿Está prendida y con señal?');
+    expect(title()).toBe(
+      'La Point no ha recibido el cobro. Si la pantalla está apagada, aprieta el botón lateral. Si no aparece, toca “Actualizar”.',
+    );
 
     next({});
     expect(title()).toContain('Esperando pago…');
@@ -309,12 +311,13 @@ describe('PointChargeScreen', () => {
     renderWith();
     next({ state: 'PAID', status: 'processed', vale: VALE });
 
-    expect(title()).toBe('Pagado ✓');
-    expect(text()).toContain('Imprimiendo vale…');
-    expect(text()).toContain('Ir al inicio');
+    expect(title()).toBe('Pagado ✓ · Imprimiendo vale… Toca “Ir al inicio” en la Point.');
+    expect(text().match(/Imprimiendo vale/g)).toHaveLength(1);
 
     advance(POLL_MS);
     answer(httpTesting.expectOne('/api/sales/182/vale'), { ...VALE, state: 'PRINTING' });
+    expect(title()).toBe('Pagado ✓');
+    expect(text()).toContain('Imprimiendo vale…');
     expect(text()).not.toContain('Ir al inicio');
 
     advance(POLL_MS);
@@ -392,7 +395,7 @@ describe('PointChargeScreen', () => {
     answer(canceled(), order({ state: 'CANCELING', cancelRequested: true }));
     next({ state: 'PAID', status: 'processed', cancelRequested: true, vale: VALE });
 
-    expect(title()).toBe('Ya estaba pagado ✓');
+    expect(title()).toContain('Ya estaba pagado ✓');
     expect(returned).toEqual([]);
   });
 
@@ -437,7 +440,7 @@ describe('PointChargeScreen', () => {
     fail(canceled(), 502, { code: 'POINT_UNAVAILABLE' });
     next({ state: 'PAID', status: 'processed', vale: VALE });
 
-    expect(title()).toBe('Pagado ✓');
+    expect(title()).toContain('Pagado ✓');
   });
 
   it('a cancel that takes too long can be asked again', () => {
@@ -482,7 +485,7 @@ describe('PointChargeScreen', () => {
       request,
       order({ state: 'PAID', status: 'action_required', pendingVerification: true, vale: VALE }),
     );
-    expect(title()).toBe('Pagado ✓');
+    expect(title()).toContain('Pagado ✓');
     expect(text()).toContain('por verificar');
   });
 

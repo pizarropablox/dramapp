@@ -72,12 +72,21 @@ describe('ValePanel', () => {
     return (fixture.nativeElement as HTMLElement).querySelector('button');
   }
 
-  function label(): string | undefined {
-    return button()?.textContent?.trim();
+  function labels(): string[] {
+    return [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].map((each) =>
+      each.textContent!.trim(),
+    );
   }
 
-  function tap(): void {
-    button()!.click();
+  /** The button that prints: the last one. */
+  function label(): string | undefined {
+    return labels().at(-1);
+  }
+
+  function tap(text?: string): void {
+    const buttons = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')];
+    const found = text ? buttons.find((each) => each.textContent!.trim() === text) : buttons.at(-1);
+    found!.click();
     fixture.detectChanges();
   }
 
@@ -91,8 +100,7 @@ describe('ValePanel', () => {
 
   it('follows the vale until it is printed', () => {
     render();
-    expect(text()).toContain('Imprimiendo vale…');
-    expect(text()).toContain('Ir al inicio');
+    expect(text()).toBe('Imprimiendo vale…');
     expect(button()).toBeNull();
 
     advance(VALE_POLL_MS);
@@ -123,14 +131,41 @@ describe('ValePanel', () => {
     advance(VALE_POLL_MS);
     answer(followed(), { secondsSinceRequested: 45 });
     expect(text()).toContain('¿Salió el vale?');
-    expect(label()).toBe('Reimprimir vale');
+    expect(labels()).toEqual(['Sí', 'Reimprimir vale']);
+  });
+
+  it('«Sí» ends the question without asking anything, and it can still be reprinted', () => {
+    render({ state: 'UNKNOWN' });
+    tap('Sí');
+
+    expect(text()).toContain('Vale impreso ✓');
+    expect(labels()).toEqual(['Reimprimir vale']);
+    tap();
+    answer(reprinted(), { kind: 'REPRINT', state: 'UNKNOWN' });
+    expect(labels()).toEqual(['Sí', 'Reimprimir vale']);
+  });
+
+  it('tells its screen while the Smart has not taken the original', () => {
+    const printing: boolean[] = [];
+    fixture = TestBed.createComponent(ValePanel);
+    fixture.componentInstance.printingChange.subscribe((value) => printing.push(value));
+    fixture.componentRef.setInput('initial', VALE);
+    fixture.componentRef.setInput('terminal', { id: 'SMART-1', name: 'Smart 1' });
+    fixture.componentRef.setInput('titled', true);
+    fixture.detectChanges();
+    expect(text()).toBe('');
+
+    advance(VALE_POLL_MS);
+    answer(followed(), { state: 'PRINTING' });
+    expect(text()).toBe('Imprimiendo vale…');
+    expect(printing).toEqual([true, false]);
   });
 
   it.each(['GONE', 'UNKNOWN'] as const)('asks whether it came out: %s', (state) => {
     render({ state });
 
     expect(text()).toContain('¿Salió el vale?');
-    expect(label()).toBe('Reimprimir vale');
+    expect(labels()).toEqual(['Sí', 'Reimprimir vale']);
   });
 
   it('a rejected original is printed as the original', () => {

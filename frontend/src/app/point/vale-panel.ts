@@ -6,6 +6,7 @@ import {
   inject,
   input,
   linkedSignal,
+  output,
   signal,
   untracked,
 } from '@angular/core';
@@ -29,19 +30,23 @@ export const REPRINT_WAIT_MAX_MS = 15_000;
 @Component({
   selector: 'app-vale-panel',
   template: `
-    <p class="text" role="status">{{ text() }}</p>
+    @if (!(titled() && printing())) {
+      <p class="text" role="status">{{ text() }}</p>
+    }
     @if (vale().mayBeDouble) {
       <p class="warning" role="alert">{{ texts.mayBeDouble }}</p>
-    }
-    @if (vale().state === 'PENDING' && !overdue()) {
-      <p>{{ texts.closeScreen }}</p>
     }
     @if (message(); as problem) {
       <p class="warning" role="alert">{{ problem }}</p>
     }
-    @if (action(); as label) {
-      <button type="button" [disabled]="working()" (click)="print()">{{ label }}</button>
-    }
+    <div class="actions">
+      @if (asking()) {
+        <button type="button" [disabled]="working()" (click)="cameOut.set(true)">Sí</button>
+      }
+      @if (action(); as label) {
+        <button type="button" [disabled]="working()" (click)="print()">{{ label }}</button>
+      }
+    </div>
   `,
   styles: `
     :host {
@@ -58,8 +63,15 @@ export const REPRINT_WAIT_MAX_MS = 15_000;
       font-weight: 600;
     }
 
-    button {
-      width: 100%;
+    .actions {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      gap: 0.5rem;
+    }
+
+    .actions:empty {
+      display: none;
     }
   `,
 })
@@ -67,6 +79,10 @@ export class ValePanel {
   /** As last known; the panel follows it from there. */
   readonly initial = input.required<ValeResponse>();
   readonly terminal = input.required<PointTerminal>();
+  /** The screen says in its title that the vale is being printed. */
+  readonly titled = input(false);
+  /** Whether the Smart has still to take the original. */
+  readonly printingChange = output<boolean>();
 
   private readonly pointService = inject(PointService);
   private readonly destroyRef = inject(DestroyRef);
@@ -90,13 +106,29 @@ export class ValePanel {
   );
   protected readonly overdue = computed(() => this.onItsWay() && this.age() >= VALE_OVERDUE_S);
 
-  protected readonly text = computed(() =>
-    this.waiting()
-      ? POINT_TEXTS.waitingVale
-      : this.overdue()
-        ? POINT_TEXTS.didItComeOut
-        : valeText(this.vale()),
+  protected readonly printing = computed(
+    () =>
+      this.vale().state === 'PENDING' &&
+      this.vale().kind === 'ORIGINAL' &&
+      !this.overdue() &&
+      !this.waiting(),
   );
+  /** The cashier said it did: nothing is stored, the question just goes away. */
+  protected readonly cameOut = signal(false);
+  private readonly doubtful = computed(
+    () => this.overdue() || this.vale().state === 'GONE' || this.vale().state === 'UNKNOWN',
+  );
+  protected readonly asking = computed(() => this.doubtful() && !this.cameOut() && !this.waiting());
+
+  protected readonly text = computed(() => {
+    if (this.waiting()) {
+      return POINT_TEXTS.waitingVale;
+    }
+    if (this.doubtful()) {
+      return this.cameOut() ? POINT_TEXTS.printed : POINT_TEXTS.didItComeOut;
+    }
+    return valeText(this.vale());
+  });
 
   /** A rejected original never came out, so it is asked for as the original again. */
   private readonly asOriginal = computed(
@@ -119,11 +151,13 @@ export class ValePanel {
       this.vale();
       untracked(() => this.followLater());
     });
+    effect(() => this.printingChange.emit(this.printing()));
   }
 
   protected print(): void {
     if (!this.working()) {
       this.waitSince = null;
+      this.cameOut.set(false);
       this.ask();
     }
   }
