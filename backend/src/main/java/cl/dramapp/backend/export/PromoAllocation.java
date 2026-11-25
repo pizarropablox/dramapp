@@ -7,11 +7,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import cl.dramapp.backend.sale.PriceCalculator.Item;
+import cl.dramapp.backend.sale.PriceCalculator.ProductPrice;
+import cl.dramapp.backend.sale.PromoGlasses;
+
 /**
  * Splits what active sales charged into glasses and money per variant. Pure: no Spring, no database.
  * <p>
- * Within one sale, a product's glasses (all its variants) are taken in cart order (line id): the first
- * {@code promos x promoQuantity} are promo glasses, the rest are charged at unit price. Glasses are always whole.
+ * Within one sale, {@link PromoGlasses} decides which glasses are promo glasses. Glasses are always whole, and a
+ * promo is split only among glasses sold at the same prices.
  * <p>
  * Money: unit-price glasses are exact. A product's promo money is split among its variants per glass with the
  * largest remainder method, so the money per product is exact to the peso; a leftover peso goes to the variant
@@ -33,10 +37,6 @@ final class PromoAllocation {
 			return normalUnits + promoUnits;
 		}
 
-	}
-
-	/** The prices a line was charged at: a promo is split only among glasses sold at the same prices. */
-	private record PriceKey(long productId, long unitPrice, Integer promoQuantity, Long promoPrice) {
 	}
 
 	/** Mutable counters of one variant at one price. */
@@ -65,7 +65,7 @@ final class PromoAllocation {
 
 	/** Totals per variant, in menu order. Only variants with glasses sold are returned. */
 	static List<VariantTotals> allocate(List<Line> lines) {
-		Map<PriceKey, Map<Long, Counter>> counters = new LinkedHashMap<>();
+		Map<ProductPrice, Map<Long, Counter>> counters = new LinkedHashMap<>();
 		Map<Long, List<Line>> bySale = new LinkedHashMap<>();
 		lines.stream()
 			.sorted(Comparator.comparingLong(Line::saleId).thenComparingLong(Line::lineId))
@@ -94,31 +94,24 @@ final class PromoAllocation {
 			.toList();
 	}
 
-	/** One sale: per product, the first promos x promoQuantity glasses in cart order are promo glasses. */
-	private static void countGlasses(List<Line> saleLines, Map<PriceKey, Map<Long, Counter>> counters) {
-		Map<PriceKey, List<Line>> byProduct = new LinkedHashMap<>();
-		saleLines.forEach(line -> byProduct.computeIfAbsent(priceKey(line), key -> new ArrayList<>()).add(line));
-
-		byProduct.forEach((price, productLines) -> {
-			long units = productLines.stream().mapToLong(Line::quantity).sum();
-			long promoGlassesLeft = price.promoQuantity() == null ? 0
-					: units / price.promoQuantity() * price.promoQuantity();
-			Map<Long, Counter> variants = counters.computeIfAbsent(price, key -> new LinkedHashMap<>());
-			for (Line line : productLines) {
-				long promo = Math.min(line.quantity(), promoGlassesLeft);
-				promoGlassesLeft -= promo;
-				Counter counter = variants.computeIfAbsent(line.variantId(), id -> new Counter(line));
-				counter.promoUnits += promo;
-				counter.normalUnits += line.quantity() - promo;
-			}
-		});
+	/** Adds one sale's lines, in cart order, to the counters. */
+	private static void countGlasses(List<Line> saleLines, Map<ProductPrice, Map<Long, Counter>> counters) {
+		int[] promoGlasses = PromoGlasses
+			.perLine(saleLines.stream().map(line -> new Item(price(line), line.quantity())).toList());
+		for (int i = 0; i < promoGlasses.length; i++) {
+			Line line = saleLines.get(i);
+			Counter counter = counters.computeIfAbsent(price(line), key -> new LinkedHashMap<>())
+				.computeIfAbsent(line.variantId(), id -> new Counter(line));
+			counter.promoUnits += promoGlasses[i];
+			counter.normalUnits += line.quantity() - promoGlasses[i];
+		}
 	}
 
 	/**
 	 * The promo money of one product at one price, split per glass among its variants (largest remainder). The
 	 * promo glasses add up to whole promos in every sale, so the product's promo money is exact.
 	 */
-	private static long[] splitPromoMoney(PriceKey price, List<Counter> variants) {
+	private static long[] splitPromoMoney(ProductPrice price, List<Counter> variants) {
 		long[] weights = variants.stream().mapToLong(counter -> counter.promoUnits).toArray();
 		if (price.promoQuantity() == null) {
 			return new long[weights.length];
@@ -158,8 +151,8 @@ final class PromoAllocation {
 		return parts;
 	}
 
-	private static PriceKey priceKey(Line line) {
-		return new PriceKey(line.productId(), line.unitPrice(), line.promoQuantity(), line.promoPrice());
+	private static ProductPrice price(Line line) {
+		return new ProductPrice(line.productId(), line.unitPrice(), line.promoQuantity(), line.promoPrice());
 	}
 
 	private static final class VariantTotalsBuilder {
