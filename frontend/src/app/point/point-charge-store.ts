@@ -2,6 +2,7 @@ import { inject, Service, signal } from '@angular/core';
 import { ProductResponse } from '../product/product';
 import { lineLabel } from '../sale/cart-storage';
 import { CartLine, EmptiedCart } from '../sale/cart-store';
+import { SaleResponse } from '../sale/sale';
 import { TipChoice } from '../sale/tip-selector';
 import { PointTerminal } from './point';
 import { POINT_STORAGE } from './point-terminal-store';
@@ -23,6 +24,14 @@ export interface PointCharge {
   /** label: only to name the line if it is no longer on the menu. */
   lines: readonly { variantId: number; quantity: number; label: string }[];
   tip: TipChoice;
+  /** To void a cash sale from its screen. */
+  sale: SaleResponse | null;
+}
+
+/** The last sale this phone printed, to print it again after going on. */
+export interface LastVale {
+  saleId: number;
+  terminal: PointTerminal;
 }
 
 /**
@@ -36,6 +45,11 @@ export class PointChargeStore {
   private readonly chargeState = signal<PointCharge | null>(this.load());
 
   readonly charge = this.chargeState.asReadonly();
+
+  private readonly lastValeState = signal<LastVale | null>(null);
+
+  /** Not saved: only since the app was opened. */
+  readonly lastVale = this.lastValeState.asReadonly();
 
   private freshSaleId: number | null = null;
 
@@ -58,6 +72,15 @@ export class PointChargeStore {
     const fresh = this.freshSaleId === saleId;
     this.freshSaleId = null;
     return fresh;
+  }
+
+  /** Paid: its vale can still be printed again. */
+  finishPaid(): void {
+    const charge = this.chargeState();
+    if (charge) {
+      this.lastValeState.set({ saleId: charge.saleId, terminal: charge.terminal });
+    }
+    this.finish();
   }
 
   finish(): void {
@@ -129,6 +152,7 @@ function isSavedCharge(value: unknown): value is PointCharge {
     isObject(value['tip']) &&
     Number.isInteger(value['tip']['amount']) &&
     typeof value['tip']['custom'] === 'boolean' &&
+    (value['sale'] === null || isObject(value['sale'])) &&
     Array.isArray(value['lines']) &&
     value['lines'].every(
       (line) =>

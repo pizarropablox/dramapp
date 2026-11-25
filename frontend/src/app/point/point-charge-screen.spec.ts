@@ -27,6 +27,7 @@ const CHARGE: PointCharge = {
   startedAt: 0,
   lines: [],
   tip: { amount: 1000, custom: false },
+  sale: null,
 };
 
 const ORDER: PointOrderResponse = {
@@ -312,10 +313,12 @@ describe('PointChargeScreen', () => {
     expect(text()).toContain('Imprimiendo vale…');
     expect(text()).toContain('Ir al inicio');
 
-    next({ state: 'PAID', status: 'processed', vale: { ...VALE, state: 'PRINTING' } });
+    advance(POLL_MS);
+    answer(httpTesting.expectOne('/api/sales/182/vale'), { ...VALE, state: 'PRINTING' });
     expect(text()).not.toContain('Ir al inicio');
 
-    next({ state: 'PAID', status: 'processed', vale: { ...VALE, state: 'PRINTED' } });
+    advance(POLL_MS);
+    answer(httpTesting.expectOne('/api/sales/182/vale'), { ...VALE, state: 'PRINTED' });
     expect(text()).toContain('Vale impreso ✓');
     advance(10 * POLL_MS);
     httpTesting.expectNone(URL);

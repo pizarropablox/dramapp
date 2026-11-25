@@ -181,10 +181,27 @@
 }
 
 @if (charge(); as current) {
-  <app-point-charge-screen
-    [charge]="current"
-    (finished)="chargeFinished()"
-    (returned)="chargeReturned($event)"
+  @if (current.kind === 'card') {
+    <app-point-charge-screen
+      [charge]="current"
+      (finished)="chargeFinished()"
+      (returned)="chargeReturned($event)"
+    />
+  } @else {
+    <app-cash-charge-screen
+      [charge]="current"
+      [canVoid]="!!current.sale"
+      (finished)="chargeFinished()"
+      (voidRequested)="current.sale && startVoid(current.sale)"
+    />
+  }
+}
+
+@if (reprinting() && lastVale(); as last) {
+  <app-vale-dialog
+    [saleId]="last.saleId"
+    [terminal]="last.terminal"
+    (closed)="reprinting.set(false)"
   />
 }
 
@@ -196,6 +213,8 @@
     [error]="recentSales.error() ? recentErrorMessage() : null"
     [refundsError]="!!recentRefunds.error()"
     [hasOpenEvent]="!!openEvent()"
+    [lastValeSaleId]="lastVale()?.saleId ?? null"
+    (reprintRequested)="openReprint()"
     (voidRequested)="startVoid($event)"
     (refundRequested)="startRefund()"
     (refundVoidRequested)="startVoidRefund($event)"

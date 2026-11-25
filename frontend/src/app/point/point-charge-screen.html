@@ -70,9 +70,10 @@
       @if (order()?.pendingVerification) {
         <p>Cerrada a mano, por verificar</p>
       }
-      <p class="vale" role="status">{{ valeText() }}</p>
-      @if (valePending()) {
-        <p>{{ texts.closeScreen }}</p>
+      @if (vale(); as printed) {
+        <app-vale-panel [initial]="printed" [terminal]="charge().terminal" />
+      } @else if (order()?.status === 'processed') {
+        <p role="status">Imprimiendo vale…</p>
       }
       <button type="button" class="main" (click)="finished.emit()">Siguiente venta</button>
     }

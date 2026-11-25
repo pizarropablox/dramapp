@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 import { MemoryStorage } from '../../testing/memory-storage';
 import { AuthStore } from '../auth/auth-store';
 import { EventResponse } from '../event/event';
-import { PointOrderResponse } from '../point/point';
+import { PointOrderResponse, ValeResponse } from '../point/point';
 import { POINT_CHARGE_STORAGE_KEY } from '../point/point-charge-store';
 import { POINT_STORAGE, PointTerminalStore } from '../point/point-terminal-store';
 import { ProductResponse } from '../product/product';
@@ -61,6 +61,20 @@ function order(changes: Partial<PointOrderResponse> = {}): PointOrderResponse {
     paidOnVoidedSale: false,
     vale: null,
     ...changes,
+  };
+}
+
+function vale(): ValeResponse {
+  return {
+    saleId: 182,
+    state: 'PRINTED',
+    kind: 'ORIGINAL',
+    terminalId: 'SMART-1',
+    terminalName: 'Smart 1',
+    error: null,
+    busy: false,
+    mayBeDouble: false,
+    secondsSinceRequested: 5,
   };
 }
 
@@ -326,6 +340,79 @@ describe('SalePage with a Point Smart', () => {
 
     expect(cart().lines()).toHaveLength(2);
     expect(storage.getItem(POINT_CHARGE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('a cash sale asks for the money, and prints its vale once received', async () => {
+    await setup();
+    await sell('EFECTIVO');
+
+    expect(screen()).toBeNull();
+    const cash = root().querySelector('app-cash-charge-screen')!;
+    expect(cash.textContent).toContain('$8.000');
+    await tap('Recibido');
+    const request = httpTesting.expectOne({ method: 'POST', url: '/api/sales/182/vale' });
+    expect(request.request.body).toEqual({ terminalId: 'SMART-1' });
+    request.flush(vale());
+    await update();
+    await tap('Siguiente venta');
+
+    expect(root().querySelector('app-cash-charge-screen')).toBeNull();
+    expect(storage.getItem(POINT_CHARGE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('voids a cash sale from its screen, also after a reload', async () => {
+    await setup();
+    await sell('EFECTIVO');
+    await reload();
+    httpTesting
+      .expectOne('/api/sales/182/vale')
+      .flush({ code: 'VALE_NOT_FOUND' }, { status: 404, statusText: 'Not Found' });
+    await update();
+
+    await tap('Anular esta venta');
+    await tap('Anular venta');
+    httpTesting
+      .expectOne('/api/sales/182/void')
+      .flush({ id: 182, status: 'VOIDED', voidedAt: '2026-11-28T04:33:00Z', lines: [] });
+    await update();
+
+    expect(root().querySelector('app-cash-charge-screen')).toBeNull();
+    expect(storage.getItem(POINT_CHARGE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('prints again the vale of the last sale after going on', async () => {
+    await setup();
+    await sell();
+    sent().flush(order({ state: 'PAID', status: 'processed', vale: vale() }));
+    await update();
+    await tap('Siguiente venta');
+
+    await tap('Ventas');
+    httpTesting.expectOne('/api/sales').flush([]);
+    httpTesting.expectOne('/api/refunds').flush([]);
+    await update();
+    await tap('Reimprimir vale de la venta #182');
+    httpTesting.expectOne('/api/sales/182/vale').flush(vale());
+    await update();
+    await tap('Reimprimir vale');
+    const request = httpTesting.expectOne('/api/vales/latest/reprint');
+    expect(request.request.body).toEqual({ saleId: 182, terminalId: 'SMART-1' });
+    request.flush({ ...vale(), kind: 'REPRINT', mayBeDouble: true });
+    await update();
+
+    expect(root().querySelector('app-vale-dialog')!.textContent).toContain('Puede salir doble');
+    await tap('Cerrar');
+    expect(root().querySelector('app-vale-dialog')).toBeNull();
+  });
+
+  it('offers no reprint on a phone that has not printed', async () => {
+    await setup();
+    await tap('Ventas');
+    httpTesting.expectOne('/api/sales').flush([]);
+    httpTesting.expectOne('/api/refunds').flush([]);
+    await update();
+
+    expect(root().textContent).not.toContain('Reimprimir');
   });
 
   it('a failed registration starts no charge', async () => {

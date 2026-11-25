@@ -14,9 +14,16 @@ export const POINT_TEXTS = {
   cancelFailed: 'Si la Point todavía muestra el monto, toca la flecha atrás',
   similarCharge: 'Si la Point pregunta por un cobro similar, toca “Continuar con cobro”',
   closeScreen: 'Toca “Ir al inicio” en la Point',
+  didItComeOut: '¿Salió el vale?',
+  mayBeDouble: 'Puede salir doble, quédate con uno',
+  busy: 'La Point está ocupada',
+  valeUnknown: 'No se sabe si salió el vale. Mira la Point',
 } as const;
 
-/** The vale under «Pagado ✓». */
+/** On its way for this long, the bar is asked whether it came out. */
+export const VALE_OVERDUE_S = 45;
+
+/** How the vale is going. */
 export function valeText(vale: ValeResponse | null): string {
   switch (vale?.state) {
     case 'PRINTED':
@@ -27,7 +34,7 @@ export function valeText(vale: ValeResponse | null): string {
         : 'Mercado Pago no aceptó el vale: no salió';
     case 'GONE':
     case 'UNKNOWN':
-      return '¿Salió el vale?';
+      return POINT_TEXTS.didItComeOut;
     default:
       return 'Imprimiendo vale…';
   }

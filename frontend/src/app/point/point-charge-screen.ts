@@ -24,8 +24,9 @@ import {
   PointOrderResponse,
 } from './point';
 import { PointCharge, PointChargeStore } from './point-charge-store';
-import { formatElapsed, POINT_TEXTS, valeText } from './point-texts';
+import { formatElapsed, POINT_TEXTS } from './point-texts';
 import { PointService } from './point.service';
+import { ValePanel } from './vale-panel';
 import { VisibleTimer } from './visible-timer';
 
 /** From one answer to the next question: never two at once. */
@@ -90,7 +91,7 @@ const PROBLEM_VIEWS: Partial<Record<PointErrorCode, View>> = {
  */
 @Component({
   selector: 'app-point-charge-screen',
-  imports: [ClpPipe],
+  imports: [ClpPipe, ValePanel],
   templateUrl: './point-charge-screen.html',
   styleUrl: './point-charge-screen.scss',
 })
@@ -233,12 +234,6 @@ export class PointChargeScreen implements OnInit {
   });
 
   protected readonly vale = computed(() => this.order()?.vale ?? null);
-  protected readonly valeText = computed(() => valeText(this.vale()));
-  /** The Smart takes the vale only after leaving «Cobro realizado». */
-  protected readonly valePending = computed(() => {
-    const state = this.vale()?.state;
-    return state === undefined || state === 'PENDING';
-  });
   protected readonly similarHint = computed(
     () => this.order()?.state === 'WAITING' && this.elapsed() >= SIMILAR_CHARGE_S,
   );
@@ -365,7 +360,7 @@ export class PointChargeScreen implements OnInit {
       this.cancelSince.set(now);
     }
     if (order.state === 'PAID') {
-      if (this.valeOnItsWay(order)) {
+      if (this.valeComing(order)) {
         this.timer.schedule(POLL_MS, () => this.poll());
       }
       return;
@@ -384,12 +379,9 @@ export class PointChargeScreen implements OnInit {
     this.timer.schedule(POLL_MS, () => this.poll());
   }
 
-  private valeOnItsWay(order: PointOrderResponse): boolean {
-    if (!order.vale) {
-      // Being sent by another question; a refunded sale never has one.
-      return order.saleStatus === 'ACTIVE' && order.status === 'processed';
-    }
-    return order.vale.state === 'PENDING' || order.vale.state === 'PRINTING';
+  /** Being sent by another question; a refunded sale never has one. From then on ValePanel follows it. */
+  private valeComing(order: PointOrderResponse): boolean {
+    return !order.vale && order.saleStatus === 'ACTIVE' && order.status === 'processed';
   }
 
   /** Asks to cancel. The order comes back only when the backend says nothing was charged. */

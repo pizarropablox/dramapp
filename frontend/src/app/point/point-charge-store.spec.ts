@@ -45,6 +45,7 @@ function charge(): PointCharge {
       { variantId: 121, quantity: 1, label: 'Red Bull' },
     ],
     tip: { amount: 1000, custom: false },
+    sale: null,
   };
 }
 
@@ -93,6 +94,18 @@ describe('PointChargeStore', () => {
 
     expect(store.charge()).toBeNull();
     expect(storage.getItem(POINT_CHARGE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('remembers the last paid one, to print its vale again', () => {
+    const store = reload();
+    store.start(charge());
+    store.finish();
+    expect(store.lastVale()).toBeNull();
+
+    store.start(charge());
+    store.finishPaid();
+    expect(store.lastVale()).toEqual({ saleId: 182, terminal: charge().terminal });
+    expect(store.charge()).toBeNull();
   });
 
   it('discards one that is too old to be followed', () => {

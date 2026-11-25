@@ -15,11 +15,13 @@ import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
+import { CashChargeScreen } from '../point/cash-charge-screen';
 import { PointOrderResponse } from '../point/point';
 import { PointChargeScreen } from '../point/point-charge-screen';
 import { cartOfCharge, chargeLines, PointChargeStore } from '../point/point-charge-store';
 import { PointTerminalStore } from '../point/point-terminal-store';
 import { backToCartNotice } from '../point/point-texts';
+import { ValeDialog } from '../point/vale-dialog';
 import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { CreateRefundRequest, RefundResponse } from '../refund/refund';
@@ -96,6 +98,7 @@ function normalize(text: string): string {
   selector: 'app-sale-page',
   imports: [
     CartPanel,
+    CashChargeScreen,
     CheckoutBar,
     PendingSaleNotice,
     PointChargeScreen,
@@ -107,6 +110,7 @@ function normalize(text: string): string {
     SessionExpiryNotice,
     StockSheet,
     TipSelector,
+    ValeDialog,
     VariantPicker,
     VoidRefundDialog,
     VoidSaleDialog,
@@ -130,6 +134,9 @@ export class SalePage {
   protected readonly charge = computed(() =>
     this.returnedOrder() ? null : this.pointCharge.charge(),
   );
+  /** This phone's last vale from a Smart, to print it again from "Ventas". */
+  protected readonly lastVale = this.pointCharge.lastVale;
+  protected readonly reprinting = signal(false);
   /** Nothing was charged: the order goes back to the cart as soon as there is a menu to rebuild it with. */
   private readonly returnedOrder = signal<PointOrderResponse | null>(null);
 
@@ -505,7 +512,7 @@ export class SalePage {
       tipAmount: this.tipAmount(),
     };
     // What it will be charged with, decided now: the choice may change while the answer comes.
-    const terminal = paymentMethod === 'MERCADO_PAGO' ? this.pointTerminal.terminal() : null;
+    const terminal = this.pointTerminal.terminal();
     this.submitting.set(true);
     this.saleError.set(null);
     // Its answer would be older than the sale's, and its marks would undo the newer ones.
@@ -526,12 +533,13 @@ export class SalePage {
             // Saved before the cart is emptied: a reload in between must not lose it.
             this.pointCharge.start({
               saleId: sale.id,
-              kind: 'card',
+              kind: paymentMethod === 'EFECTIVO' ? 'cash' : 'card',
               amount: sale.amountToCharge,
               terminal,
               startedAt: Date.now(),
               lines: chargeLines(this.cart.lines()),
               tip: this.cart.tip(),
+              sale: paymentMethod === 'EFECTIVO' ? sale : null,
             });
           } else {
             this.lastSale.set(sale);
@@ -572,7 +580,12 @@ export class SalePage {
   }
 
   protected chargeFinished(): void {
-    this.pointCharge.finish();
+    this.pointCharge.finishPaid();
+  }
+
+  protected openReprint(): void {
+    this.recentOpen.set(false);
+    this.reprinting.set(true);
   }
 
   protected chargeReturned(order: PointOrderResponse): void {
@@ -636,6 +649,9 @@ export class SalePage {
           this.voiding.set(null);
           if (this.lastSale()?.id === voided.id) {
             this.lastSale.set(null);
+          }
+          if (this.pointCharge.charge()?.saleId === voided.id) {
+            this.pointCharge.finish();
           }
           if (this.recentSales.hasValue()) {
             this.recentSales.update((sales) =>

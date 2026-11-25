@@ -51,6 +51,11 @@ function createdAt(entry: Entry): number {
         <!-- The cart is app-wide, so leaving the sale screen keeps it. -->
         <a class="totals" routerLink="/totales">Totales →</a>
       </div>
+      @if (lastValeSaleId(); as saleId) {
+        <button type="button" (click)="reprintRequested.emit()">
+          Reimprimir vale de la venta #{{ saleId }}
+        </button>
+      }
       <div class="body">
         @if (loading()) {
           <p class="note" role="status">Cargando ventas…</p>
@@ -357,10 +362,13 @@ export class RecentSalesSheet {
   /** The refunds failed to load (e.g. a backend older than DRAMA-41): the sales are still shown. */
   readonly refundsError = input(false);
   readonly hasOpenEvent = input(true);
+  /** This phone's last sale with a vale from a Smart. */
+  readonly lastValeSaleId = input<number | null>(null);
   readonly voidRequested = output<SaleResponse>();
   readonly refundRequested = output<void>();
   readonly refundVoidRequested = output<RefundResponse>();
   readonly retry = output<void>();
+  readonly reprintRequested = output<void>();
   readonly closed = output<void>();
 
   protected readonly labels = PAYMENT_METHOD_LABELS;
