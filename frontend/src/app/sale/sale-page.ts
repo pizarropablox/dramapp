@@ -16,7 +16,7 @@ import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
 import { CashChargeScreen } from '../point/cash-charge-screen';
-import { PointOrderResponse } from '../point/point';
+import { isPaid, PointOrderResponse } from '../point/point';
 import { PointChargeScreen } from '../point/point-charge-screen';
 import { cartOfCharge, chargeLines, PointChargeStore } from '../point/point-charge-store';
 import { PointTerminalStore } from '../point/point-terminal-store';
@@ -605,7 +605,9 @@ export class SalePage {
   }
 
   protected chargeReturned(order: PointOrderResponse): void {
-    this.returnedOrder.set(order);
+    if (!isPaid(order)) {
+      this.returnedOrder.set(order);
+    }
   }
 
   private backToCart(order: PointOrderResponse, menu: ProductResponse[]): void {

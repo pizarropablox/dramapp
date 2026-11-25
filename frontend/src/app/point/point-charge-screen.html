@@ -61,7 +61,9 @@
     }
     @case ('expired') {
       <p>{{ texts.expired }}</p>
-      <button type="button" class="main" (click)="goBack()">{{ backLabel() }}</button>
+      <button type="button" class="main" [disabled]="working()" (click)="goBack()">
+        {{ backLabel() }}
+      </button>
     }
     @case ('notResponding') {
       <p>{{ texts.notRespondingHelp }}</p>

@@ -276,6 +276,24 @@ class PointOrderOutcomeTests extends PointScenario {
 	}
 
 	@Test
+	void whatWasPaidAndClosedByHandAsNotPaidIsNeverAnsweredAsCanceled() {
+		long sale = sentSale();
+		mercadoPago.down(true);
+		assertState(resolve(sale, "NOT_PAID"), "CANCELED");
+		mercadoPago.down(false);
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+
+		var result = follow(sale);
+
+		assertThat(result).bodyJson().isLenientlyEqualTo("""
+				{"state": "PAID", "saleStatus": "VOIDED", "paidOnVoidedSale": true, "pendingVerification": false}""");
+		assertState(cancel(sale), "PAID");
+		assertState(resolve(sale, "NOT_PAID"), "PAID");
+		assertProblem(send(sale), HttpStatus.CONFLICT, "SALE_NOT_CHARGEABLE");
+		assertThat(mercadoPago.printIds()).isEmpty();
+	}
+
+	@Test
 	void anUnknownOrderCanBeClosedByHandWithoutSendingItsKeyAgain() {
 		long sale = cardSale();
 		mercadoPago.failNextOrder(Failure.LOST);

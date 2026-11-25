@@ -18,6 +18,7 @@ import { ClpPipe } from '../shared/clp';
 import {
   BusyPoint,
   busyPoint,
+  isPaid,
   PointErrorCode,
   pointErrorCode,
   PointOrderOutcome,
@@ -162,7 +163,7 @@ export class PointChargeScreen implements OnInit {
     if (!order) {
       return this.failures() >= MAX_FAILURES ? 'notResponding' : 'checking';
     }
-    if (order.state === 'PAID') {
+    if (isPaid(order)) {
       return order.saleStatus === 'VOIDED' ? 'paidVoided' : 'paid';
     }
     if (order.state === 'CANCELED' || order.state === 'NOT_SENT') {
@@ -370,7 +371,7 @@ export class PointChargeScreen implements OnInit {
     if (order.cancelRequested && this.cancelSince() === null) {
       this.cancelSince.set(now);
     }
-    if (order.state === 'PAID') {
+    if (isPaid(order)) {
       this.printing.set(this.valeComing(order) || order.vale?.state === 'PENDING');
       if (this.valeComing(order)) {
         this.timer.schedule(POLL_MS, () => this.poll());
@@ -398,12 +399,11 @@ export class PointChargeScreen implements OnInit {
 
   /** Asks to cancel. The order comes back only when the backend says nothing was charged. */
   protected goBack(): void {
-    const order = this.order();
-    if (this.view() === 'expired' && order) {
-      this.returned.emit(order);
+    if (this.working()) {
       return;
     }
-    if (this.working()) {
+    if (this.view() === 'expired') {
+      this.leaveExpired();
       return;
     }
     this.timer.cancel();
@@ -433,6 +433,33 @@ export class PointChargeScreen implements OnInit {
         this.message.set(errorMessage(error));
         if (!this.problem()) {
           this.timer.schedule(POLL_MS, () => this.poll());
+        }
+      },
+    );
+  }
+
+  /** The Smart may have charged an expired amount: asked once more before the order comes back. */
+  private leaveExpired(): void {
+    this.working.set(true);
+    this.message.set(null);
+    this.call(
+      this.pointService.follow(this.charge().saleId),
+      (order) => {
+        this.working.set(false);
+        if (isPaid(order)) {
+          this.take(order);
+        } else {
+          this.returned.emit(order);
+        }
+      },
+      (error) => {
+        this.working.set(false);
+        this.failures.update((count) => count + 1);
+        const order = this.order();
+        if (order && this.failures() >= MAX_FAILURES) {
+          this.returned.emit(order);
+        } else {
+          this.message.set(errorMessage(error));
         }
       },
     );

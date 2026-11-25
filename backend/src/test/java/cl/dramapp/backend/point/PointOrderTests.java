@@ -185,6 +185,18 @@ class PointOrderTests {
 		assertThat(order.isOpen()).isFalse();
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = { "processed", "refunded" })
+	void closedByHandAsNotPaidIsPaidOnceMercadoPagoShowsThePayment(String status) {
+		PointOrder order = order("action_required");
+		order.closeByHand(PointOrderOutcome.NOT_PAID, "barra");
+		assertThat(order.getState()).isEqualTo(PointOrderState.CANCELED);
+
+		order.recordStatus(status, null);
+
+		assertThat(order.getState()).isEqualTo(PointOrderState.PAID);
+	}
+
 	@Test
 	void paidByMercadoPagoIsNeverPending() {
 		assertThat(order("processed").isPendingVerification()).isFalse();

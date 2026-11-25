@@ -281,6 +281,10 @@ public class PointOrder {
 		if (creationError != null) {
 			return PointOrderState.NOT_SENT;
 		}
+		// Whatever was read on the Smart, the money came in.
+		if (isPaidInMercadoPago()) {
+			return PointOrderState.PAID;
+		}
 		if (resolvedOutcome != null) {
 			return resolvedOutcome == PointOrderOutcome.PAID ? PointOrderState.PAID : PointOrderState.CANCELED;
 		}
@@ -288,7 +292,6 @@ public class PointOrder {
 			case null -> PointOrderState.SENDING;
 			case "created" -> cancelRequestedAt == null ? PointOrderState.SENT : PointOrderState.CANCELING;
 			case "at_terminal" -> cancelRequestedAt == null ? PointOrderState.WAITING : PointOrderState.CANCELING;
-			case PROCESSED, REFUNDED -> PointOrderState.PAID;
 			case "canceled", "expired", "failed" -> PointOrderState.CANCELED;
 			default -> PointOrderState.ATTENTION;
 		};

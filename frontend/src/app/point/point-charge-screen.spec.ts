@@ -419,8 +419,49 @@ describe('PointChargeScreen', () => {
     expect(returned).toEqual([]);
     expect(text()).toContain('toca la flecha atrás');
     tap('Volver al carrito');
+    expect(returned).toEqual([]);
+    answer(polled(), order({ state: 'CANCELED', status: 'expired', saleStatus: 'VOIDED' }));
     expect(returned).toHaveLength(1);
     httpTesting.expectNone(`${URL}/cancel`);
+  });
+
+  it('an expired charge that was paid does not bring the cart back', () => {
+    renderWith();
+    next({ state: 'CANCELED', status: 'expired', saleStatus: 'VOIDED' });
+    tap('Volver al carrito');
+    answer(
+      polled(),
+      order({ state: 'PAID', status: 'processed', saleStatus: 'VOIDED', paidOnVoidedSale: true }),
+    );
+
+    expect(title()).toBe('Cobro recibido en una venta anulada');
+    expect(returned).toEqual([]);
+  });
+
+  it('an expired charge without answer comes back only after three tries', () => {
+    renderWith();
+    next({ state: 'CANCELED', status: 'expired', saleStatus: 'VOIDED' });
+    for (let i = 0; i < 2; i++) {
+      tap('Volver al carrito');
+      fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
+      expect(returned).toEqual([]);
+    }
+    tap('Volver al carrito');
+    fail(polled(), 502, { code: 'POINT_UNAVAILABLE' });
+    expect(returned).toHaveLength(1);
+  });
+
+  it.each([
+    { state: 'CANCELED', status: 'processed' },
+    { state: 'CANCELED', status: 'refunded' },
+    { state: 'CANCELED', status: 'canceled', paidOnVoidedSale: true },
+    { state: 'NOT_SENT', status: 'processed' },
+  ] as Partial<PointOrderResponse>[])('never brings a paid sale back to the cart: %o', (paid) => {
+    renderWith();
+    next({ saleStatus: 'VOIDED', ...paid });
+
+    expect(title()).toBe('Cobro recibido en una venta anulada');
+    expect(returned).toEqual([]);
   });
 
   it('without an answer it could not be canceled: it can be tried again', () => {

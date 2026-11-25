@@ -51,6 +51,16 @@ export interface PointOrderResponse {
   vale: ValeResponse | null;
 }
 
+/** The money came in, whatever else the order says: such a sale never goes back to the cart. */
+export function isPaid(order: PointOrderResponse): boolean {
+  return (
+    order.state === 'PAID' ||
+    order.paidOnVoidedSale ||
+    order.status === 'processed' ||
+    order.status === 'refunded'
+  );
+}
+
 /** Mirrors the backend's PointSaleMark: a sale whose charge someone must look at. */
 export interface PointSaleMark {
   saleId: number;

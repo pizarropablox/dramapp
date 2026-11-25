@@ -70,10 +70,15 @@ class PointSaleMarksTests extends PointScenario {
 	}
 
 	@Test
-	void closedByHandAsNotPaidIsNotShown() {
-		closedByHand("NOT_PAID");
-
+	void closedByHandAsNotPaidIsShownOnlyIfItWasPaidAfterAll() {
+		long sale = closedByHand("NOT_PAID");
 		assertMarks("[]");
+
+		mercadoPago.orderBecomes(mpOrderId(), "processed", "accredited");
+		follow(sale);
+		assertMarks("""
+				[{"saleId": %d, "amount": 18000, "pendingVerification": false, "paidOnVoidedSale": true}]"""
+			.formatted(sale));
 	}
 
 	@Test
