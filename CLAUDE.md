@@ -18,6 +18,7 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - **Variante**: versión de un producto (ej. Jack Daniels Original / Manzana / Honey).
 - **Promo**: precio especial por cantidad. Puede mezclar variantes del **mismo** producto, nunca productos distintos.
 - **Vale**: flor de papel que la cajera entrega al cliente después de cobrar; el cliente la canjea con el bartender, que la guarda. Al cierre se cuentan para cuadrar contra las ventas registradas.
+- **Point Smart / Point Mini**: las máquinas de Mercado Pago. En la Mini el monto se digita a mano; a la Smart lo manda la app (DRAMA-71) y ella imprime el vale.
 - **Agotado**: lo que se acaba durante la noche. Es una marca de la variante en el evento, la pone `barra` y se quita si llega más. No es desactivar, y la app no calcula stock: el indicador es el humano. En el código se llama *out of stock* (`stock_out`, `outOfStockSince`, `OUT_OF_STOCK`).
 - **Roles**:
   - `barra`: registra ventas, anula y ve totales.
@@ -53,7 +54,7 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - `sale_line` guarda `variant_id` y los precios, no los nombres: renombrar cambia cómo se ven las ventas pasadas, también en eventos cerrados. Los montos no cambian.
 - Lo desactivado no se edita (409) hasta reactivarlo. «Única» solo vale como variante sin otras al lado, contando las desactivadas.
 - La primera variante de un producto con solo «Única» renombra esa fila y conserva su id.
-- La venta se cobra al precio actual del backend: la cajera digita en la Point el «Cobrar $X» que aparece después de confirmar. `POST /api/sales` no recibe el total del teléfono.
+- La venta se cobra al precio actual del backend: con Point Mini, la cajera digita el «Cobrar $X» que aparece después de confirmar. `POST /api/sales` no recibe el total del teléfono.
 - La carta se recarga al entrar a Venta y al volver a primer plano, nunca con una venta enviándose o pendiente. `SalePage` llama a `CartStore.syncMenu` con cada carta; las líneas que faltan no se borran.
 
 ## Desactivar la carta (DRAMA-30)
@@ -77,6 +78,24 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - Nada sale solo del carrito: las líneas quedan en gris y «Confirmar venta» se bloquea hasta que la cajera las quite. Las marcas viven en `SalePage.outOfStock`, aparte de la carta: no leer `line.variant.outOfStockSince`, que queda vieja.
 - Las marcas siguen las guardas de la carta: `setOutOfStock` no aplica nada con una venta enviándose o pendiente, y `confirm()` y marcar cancelan la recarga en vuelo, porque su respuesta sería más vieja.
 - Las hojas `StockSheet` y `RestockSheet` no se cierran con un request en curso (timeout de 10 s): cerrar cancelaría una marca que la cajera cree hecha.
+
+## Point Smart y vale impreso (DRAMA-71)
+
+- Paquetes `point` (cobros), `point.mp` (cliente de Mercado Pago) y `vale`; en el frontend, `app/point/`. **Apagado** sin `DRAMAPP_POINT_TERMINALS`. Con Point Mini nada cambia: `sale-page.spec.ts` no se edita por esto.
+- `POST /api/sales` no cambia. El cobro es `POST /api/sales/{id}/point-order` y se sigue con GET, que consulta MP: sin webhooks ni procesos en segundo plano. El teléfono consulta 1 s después de cada respuesta, solo visible. No agregar timeout al pago.
+- **Nunca llamar a MP dentro de una transacción** (`MercadoPagoClient.requireNoTransaction`): se guarda, se llama, se guarda. La venta se bloquea siempre antes que la orden. Los tests de `point` y `vale` extienden `PointScenario` y no son `@Transactional`.
+- Se decide solo por `status`, nunca por `status_detail`. Un estado final no retrocede, salvo a pagado.
+- **Rechazo definitivo:** solo un 4xx de la **primera** llamada. Ahí va clave nueva (`-2`). Tras una respuesta perdida, 408, 429, 5xx o `idempotency_key_already_used` no se sabe si la orden existe: misma clave o cierre a mano. Repetir una clave devuelve la orden como se creó: se usa solo el id y se pregunta con GET.
+- **La venta se anula solo si MP dice que no se cobró** (o si nunca hubo orden, o por cierre a mano). «La Point dice APROBADO» deja `resolved_outcome = PAID` y queda por verificar mientras `status` no sea `processed`. Un pago sobre una venta anulada se marca, no se arregla.
+- Con una orden sin resultado, anular la venta y cerrar el evento responden 409 `POINT_ORDER_OPEN` (`SaleVoidGuard`, `EventCloseGuard`).
+- Ningún error de MP sale como 401 o 403: el interceptor cerraría la sesión. Los códigos están en `PointException` y `ValeException`.
+- **Vale:** un solo `ORIGINAL` por venta, que guarda la misma transacción que ve el pago. Cada papel se envía a lo más una vez; otro es otra fila y **siempre lo pide una persona**. Un rechazado no salió y deja pedir el original de nuevo; sin respuesta, vencido o cancelado, sigue como «REIMPRESIÓN».
+- Reimprimir cancela antes el vale que la Smart no ha tomado. Solo el último vale de cada Smart (la cuenta es compartida).
+- Un vale en curso hace que MP rechace cobros y vales en esa Smart: `POINT_PRINTING` no manda la orden durante 45 s. Las esperas las hace el teléfono, nunca un hilo del backend.
+- El papel tiene 32 columnas y la Smart achica lo que no cabe: todo se parte en `ValeContent`. Sin QR; no usar `{left}` ni `{w}`. Los vasos promo salen de `PromoGlasses`, la misma regla del Excel.
+- El token vive solo en variables de entorno. No se guardan ni registran datos de tarjeta, y los logs no llevan bodies. No hay modo de prueba: con el token real, todo cobra de verdad.
+- Los textos de la barra están en `point-texts.ts`. El cobro en curso se guarda en `dramapp.pointCharge`, aparte del carrito; después de recargar nunca se envía solo.
+- Resultados con la Smart real: `RESULTADOS.md` de la rama local `spike/DRAMA-70-point-smart`.
 
 ## PWA (DRAMA-32)
 

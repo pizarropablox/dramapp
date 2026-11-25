@@ -112,6 +112,10 @@ La configuración de Render vive en [`render.yaml`](render.yaml) (Blueprint) y l
 | Render, `dramapp-backend` | `DRAMAPP_JWT_SECRET` | clave que firma las sesiones: base64 de 256 bits (secreta, ver [Usuarios y contraseñas](#usuarios-y-contraseñas)) |
 | Render, `dramapp-backend` | `DRAMAPP_BARRA_PASSWORD` | hash `{bcrypt}...` de la clave de `barra` (secreto) |
 | Render, `dramapp-backend` | `DRAMAPP_ADMIN_PASSWORD` | hash `{bcrypt}...` de la clave de `admin` (secreto) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_TERMINALS` | Points Smart como `id=nombre;id=nombre`. **Vacía: la función queda apagada** (ver [Cobrar con la Point Smart](#cobrar-con-la-point-smart)) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_ACCESS_TOKEN` | Access Token productivo de Mercado Pago (secreto) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_KEY_PREFIX` | `prod` (en local, otro valor: comparten la cuenta de Mercado Pago) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_PRINT_ON_TERMINAL` | opcional: `no_ticket` (por defecto) o `seller_ticket` |
 | Render, `dramapp` | `NODE_VERSION` | `24.20.0` (ya viene en `render.yaml`) |
 
 Render entrega `PORT` solo; el backend lo usa (`server.port: ${PORT:8080}`).
@@ -316,6 +320,30 @@ Es para lo que **se acaba durante la noche** y puede volver si llega más. Lo ma
 - Las marcas son de cada evento: el evento siguiente parte sin ninguna.
 
 **Antes de la fiesta**, tocar **Actualizar** en todos los teléfonos después de un deploy: un teléfono con la versión anterior no muestra el gris, y si intenta vender algo marcado ve «El evento está cerrado», aunque no lo esté. El carrito no se pierde. Los previews de PR usan el backend de producción, así que marcar agotados no funciona ahí hasta desplegarlo: se prueba en local.
+
+### Cobrar con la Point Smart
+
+Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al final) con qué cobra Mercado Pago: **Point Mini**, que es lo de siempre y el valor por defecto, o una Smart. Es un ajuste del teléfono: «Cerrar sesión» no lo borra. La Smart debe estar en modo PDV.
+
+- **Tarjeta:** al confirmar, el monto aparece solo en la Smart y la app espera el pago. Al pagarse, la Smart imprime el vale.
+- **Efectivo:** la app pide el dinero, y el vale se imprime al tocar «Recibido».
+- **«Volver al carrito»** cancela en la Smart. La venta se anula solo cuando Mercado Pago confirma que no se cobró.
+- **Si Mercado Pago no da un resultado,** se cierra a mano con lo que diga la Smart. «APROBADO» deja la venta cerrada a mano, por verificar en el panel de Mercado Pago.
+- Con un cobro abierto no se puede anular la venta ni cerrar el evento.
+
+**Apagarla:** borra `DRAMAPP_POINT_TERMINALS` en Render (reinicia el backend) y pasa cada teléfono a Point Mini. Si la terminal o el token están mal, el deploy no arranca y sigue la instancia anterior.
+
+**No hay modo de prueba:** un backend local, o un preview de PR, con el token real cobra e imprime en la Smart de verdad.
+
+#### Checklist de la barra
+
+- [ ] Smart enchufada, con papel y en la espera de PDV. Si se apagó o perdió conexión, toca **«Actualizar»** en esa pantalla.
+- [ ] Cada teléfono con la Point correcta en Totales.
+- [ ] Al aparecer **«Cobro realizado»**, toca **«Ir al inicio»**: el vale sale en ~4 s. Sin tocar nada tarda ~18 s y el cobro siguiente espera.
+- [ ] Si pregunta por un **«cobro similar»**, toca **«Continuar con cobro»**.
+- [ ] No toques «Imprimir comprobante» por costumbre: es el comprobante de Mercado Pago, no el vale.
+- [ ] La pantalla se apaga al minuto. Un cobro la enciende; si no, aprieta el botón lateral.
+- [ ] Una Point Mini de reserva. Con la Smart en PDV no se puede cobrar a mano.
 
 ### Límites del plan gratis
 
