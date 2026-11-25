@@ -180,6 +180,14 @@
   />
 }
 
+@if (charge(); as current) {
+  <app-point-charge-screen
+    [charge]="current"
+    (finished)="chargeFinished()"
+    (returned)="chargeReturned($event)"
+  />
+}
+
 @if (recentOpen()) {
   <app-recent-sales-sheet
     [sales]="recentSales.hasValue() ? recentSales.value() : []"

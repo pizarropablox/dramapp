@@ -15,7 +15,11 @@ import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
+import { PointOrderResponse } from '../point/point';
+import { PointChargeScreen } from '../point/point-charge-screen';
+import { cartOfCharge, chargeLines, PointChargeStore } from '../point/point-charge-store';
 import { PointTerminalStore } from '../point/point-terminal-store';
+import { backToCartNotice } from '../point/point-texts';
 import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { CreateRefundRequest, RefundResponse } from '../refund/refund';
@@ -94,6 +98,7 @@ function normalize(text: string): string {
     CartPanel,
     CheckoutBar,
     PendingSaleNotice,
+    PointChargeScreen,
     ProductGrid,
     RecentSalesSheet,
     RefundDialog,
@@ -119,6 +124,14 @@ export class SalePage {
   private readonly document = inject(DOCUMENT);
   protected readonly cart = inject(CartStore);
   private readonly pointTerminal = inject(PointTerminalStore);
+  private readonly pointCharge = inject(PointChargeStore);
+
+  /** The sale being charged with a Point Smart; after a reload it is found again. */
+  protected readonly charge = computed(() =>
+    this.returnedOrder() ? null : this.pointCharge.charge(),
+  );
+  /** Nothing was charged: the order goes back to the cart as soon as there is a menu to rebuild it with. */
+  private readonly returnedOrder = signal<PointOrderResponse | null>(null);
 
   /** The cashier reads where the amount will show up; with a Point Mini it says what it always has. */
   protected readonly mercadoPagoLabel = computed(() => {
@@ -310,6 +323,14 @@ export class SalePage {
       });
     });
 
+    effect(() => {
+      const order = this.returnedOrder();
+      const menu = this.menu.hasValue() ? this.menu.value() : null;
+      if (order && menu) {
+        untracked(() => this.backToCart(order, menu));
+      }
+    });
+
     // A line going grey may be out of view: the cart can be collapsed, and "Muy grande" may show a single row.
     effect(() => {
       const lines = this.outOfStockLines();
@@ -483,6 +504,8 @@ export class SalePage {
       lines: this.cart.toRequestLines(),
       tipAmount: this.tipAmount(),
     };
+    // What it will be charged with, decided now: the choice may change while the answer comes.
+    const terminal = paymentMethod === 'MERCADO_PAGO' ? this.pointTerminal.terminal() : null;
     this.submitting.set(true);
     this.saleError.set(null);
     // Its answer would be older than the sale's, and its marks would undo the newer ones.
@@ -499,7 +522,20 @@ export class SalePage {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (sale) => {
-          this.lastSale.set(sale);
+          if (terminal) {
+            // Saved before the cart is emptied: a reload in between must not lose it.
+            this.pointCharge.start({
+              saleId: sale.id,
+              kind: 'card',
+              amount: sale.amountToCharge,
+              terminal,
+              startedAt: Date.now(),
+              lines: chargeLines(this.cart.lines()),
+              tip: this.cart.tip(),
+            });
+          } else {
+            this.lastSale.set(sale);
+          }
           this.showNotice(null);
           this.cart.clear();
           this.paymentMethod.set(null);
@@ -533,6 +569,27 @@ export class SalePage {
           }
         },
       });
+  }
+
+  protected chargeFinished(): void {
+    this.pointCharge.finish();
+  }
+
+  protected chargeReturned(order: PointOrderResponse): void {
+    this.returnedOrder.set(order);
+  }
+
+  private backToCart(order: PointOrderResponse, menu: ProductResponse[]): void {
+    const charge = this.pointCharge.charge();
+    this.returnedOrder.set(null);
+    this.pointCharge.finish();
+    // Never over another order.
+    if (!charge || !this.cart.isEmpty()) {
+      return;
+    }
+    const { cart, removed } = cartOfCharge(charge, menu);
+    this.cart.putBack(cart);
+    this.showNotice(backToCartNotice(order, removed));
   }
 
   protected openRecent(): void {
