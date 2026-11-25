@@ -351,6 +351,13 @@ Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al 
 - [ ] No toques «Imprimir comprobante» por costumbre: es el comprobante de Mercado Pago, no el vale.
 - [ ] La pantalla se apaga al minuto. Un cobro la enciende; si no, aprieta el botón lateral.
 - [ ] Una Point Mini de reserva. Con la Smart en PDV no se puede cobrar a mano.
+- [ ] Si aparece **«Esta venta pudo haberse registrado»** con el botón **«Anulada o no está: seguir»**:
+  1. Toca **«Ver ventas»** y busca la venta. Compara **hora, monto y productos** con el aviso y el carrito: puede haber una igual de otro teléfono, y esa no se anula. Ante la duda, pregunta en los otros teléfonos antes de anular.
+  2. **Si está,** anúlala ahí y recién entonces toca «Anulada o no está: seguir». **No toques «seguir» si la venta aparece y no la has anulado:** quedaría registrada dos veces.
+  3. **Si no está,** toca «Anulada o no está: seguir».
+  4. Confirma de nuevo: ahora sí llega a la Smart.
+  5. **No cambies de Point en Totales** mientras el aviso esté abierto.
+- [ ] Si aparece **«La venta se cerró como no cobrada y está anulada. Avisa al admin»**: la Smart dijo APROBADO después de cerrar la venta como no cobrada. No vuelvas a cobrarle al cliente; avisa al admin y toca «Siguiente venta».
 
 #### Checklist del cierre
 

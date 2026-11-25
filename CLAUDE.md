@@ -87,6 +87,8 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - Se decide solo por `status`, nunca por `status_detail`. Un estado final no retrocede, salvo a pagado.
 - **Rechazo definitivo:** solo un 4xx de la **primera** llamada. Ahí va clave nueva (`-2`). Tras una respuesta perdida, 408, 429, 5xx o `idempotency_key_already_used` no se sabe si la orden existe: misma clave o cierre a mano. Repetir una clave devuelve la orden como se creó: se usa solo el id y se pregunta con GET.
 - **La venta se anula solo si MP dice que no se cobró** (o si nunca hubo orden, o por cierre a mano). «La Point dice APROBADO» deja `resolved_outcome = PAID` y queda por verificar mientras `status` no sea `processed`. Un pago sobre una venta anulada se marca, no se arregla.
+- Cerrar a mano con el resultado contrario al ya guardado pregunta a MP; si MP no lo resuelve, 409 `POINT_CLOSED_OTHERWISE`. El teléfono guarda `contested` en `dramapp.pointCharge` y no devuelve el carrito solo: lo decide MP o la cajera al repetir «No se cobró». Antes de responder que algo no se cobró, se pregunta a MP.
+- Una orden en `SENDING` no sale sola de ahí: se puede cerrar a mano, y el backend lo rechaza (`POINT_NOT_CLOSABLE`) mientras su propio envío sigue en curso.
 - Con una orden sin resultado, anular la venta y cerrar el evento responden 409 `POINT_ORDER_OPEN` (`SaleVoidGuard`, `EventCloseGuard`).
 - Ningún error de MP sale como 401 o 403: el interceptor cerraría la sesión. Los códigos están en `PointException` y `ValeException`.
 - **Vale:** un solo `ORIGINAL` por venta, que guarda la misma transacción que ve el pago. Cada papel se envía a lo más una vez; otro es otra fila y **siempre lo pide una persona**. Un rechazado no salió y deja pedir el original de nuevo; sin respuesta, vencido o cancelado, sigue como «REIMPRESIÓN».
@@ -95,6 +97,7 @@ App para **Fiesta DRAMA**, evento mensual de reggaetón en San Bernardo.
 - El papel tiene 32 columnas y la Smart achica lo que no cabe: todo se parte en `ValeContent`. Sin QR; no usar `{left}` ni `{w}`. Los vasos promo salen de `PromoGlasses`, la misma regla del Excel.
 - El token vive solo en variables de entorno. No se guardan ni registran datos de tarjeta, y los logs no llevan bodies. No hay modo de prueba: con el token real, todo cobra de verdad.
 - «Ventas» muestra las marcas «Cerrada a mano, por verificar» y «Cobro recibido en una venta anulada» (`GET /api/point/sales`), sin consultar a MP. `barra` con Point Mini no las pide.
+- Venta sin respuesta: `PendingSale.terminal` guarda la Point con que se envió, y el aviso usa esa, no la elegida ahora. Con Smart no ofrece vaciar, porque la venta registrada nunca llegó a la Smart: «Anulada o no está: seguir». En la barra: antes de anular en Ventas, comparar hora, monto y productos para no anular la de otro teléfono; no tocar «seguir» sin anular si la venta aparece; no cambiar de Point con ese aviso abierto (checklist en el README).
 - Los textos de la barra están en `point-texts.ts`. El cobro en curso se guarda en `dramapp.pointCharge`, aparte del carrito; después de recargar nunca se envía solo.
 - Resultados con la Smart real: `RESULTADOS.md` de la rama local `spike/DRAMA-70-point-smart`.
 
