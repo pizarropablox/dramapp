@@ -345,9 +345,13 @@ Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al 
 #### Checklist de la barra
 
 - [ ] Smart enchufada, con papel y en la espera de PDV. Si se apagó o perdió conexión, toca **«Actualizar»** en esa pantalla.
+- [ ] Si al encender la Smart dice **«Hubo una falla de comunicación con el punto de venta»**, espera unos segundos y toca **«Actualizar»**.
+- [ ] Cada teléfono entra siempre con el mismo usuario: las cajeras con `barra`. Inicia sesión antes de abrir la barra y revisa en Totales que diga «hasta» una hora después de las 06:00.
+- [ ] Si un teléfono inició sesión en una prueba en las 24 h anteriores, cierra sesión y vuelve a entrar antes de abrir: si no, la sesión vence en plena fiesta.
 - [ ] Cada teléfono con la Point correcta en Totales.
 - [ ] Al aparecer **«Cobro realizado»**, toca **«Ir al inicio»**: el vale sale en ~4 s. Sin tocar nada tarda ~18 s y el cobro siguiente espera.
-- [ ] Si pregunta por un **«cobro similar»**, toca **«Continuar con cobro»**.
+- [ ] Si pregunta por un **«cobro similar»** (la misma tarjeta paga el mismo monto seguido), toca **«Continuar con cobro»**.
+- [ ] Si al reimprimir dice **«La Point está ocupada»**, espera 3 s y toca **«Reimprimir vale»** otra vez. Si sigue, mira la Smart: si está apagada, enciéndela y toca «Actualizar». Si sale un vale, entrégalo y no reimprimas.
 - [ ] No toques «Imprimir comprobante» por costumbre: es el comprobante de Mercado Pago, no el vale.
 - [ ] La pantalla se apaga al minuto. Un cobro la enciende; si no, aprieta el botón lateral.
 - [ ] Una Point Mini de reserva. Con la Smart en PDV no se puede cobrar a mano.
@@ -356,7 +360,7 @@ Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al 
   2. **Si está,** anúlala ahí y recién entonces toca «Anulada o no está: seguir». **No toques «seguir» si la venta aparece y no la has anulado:** quedaría registrada dos veces.
   3. **Si no está,** toca «Anulada o no está: seguir».
   4. Confirma de nuevo: ahora sí llega a la Smart.
-  5. **No cambies de Point en Totales** mientras el aviso esté abierto.
+  5. **No cambies de Point en Totales** mientras el aviso esté abierto, ni toques «Cerrar sesión» o entres con otro usuario: el aviso y el carrito se perderían.
 - [ ] Si aparece **«La venta se cerró como no cobrada y está anulada. Avisa al admin»**: la Smart dijo APROBADO después de cerrar la venta como no cobrada. No vuelvas a cobrarle al cliente; avisa al admin y toca «Siguiente venta».
 
 #### Checklist del cierre
