@@ -21,6 +21,9 @@ class ValeContentTests {
 
 	private static final String RULE = "--------------------------------";
 
+	/** Four empty lines, so the cutter does not go through the total. */
+	private static final String MARGIN = "{br}{br}{br}{br}";
+
 	private static Glass glass(String name) {
 		return new Glass(name, false);
 	}
@@ -40,7 +43,27 @@ class ValeContentTests {
 		assertThat(content).isEqualTo("{center}{b}FIESTA DRAMA{/b}{/center}{br}"
 				+ "{center}Sábado 28/11 · 01:32{/center}{br}" + RULE + "{br}" + "[ ] TROPICAL GIN (promo){br}"
 				+ "[ ] TROPICAL GIN (promo){br}" + "[ ] CERVEZA{br}" + RULE + "{br}"
-				+ "{center}Total $17.000 · Venta #182{/center}{br}");
+				+ "{center}Total $17.000 · Venta #182{/center}{br}" + MARGIN);
+	}
+
+	@Test
+	void endsWithRoomForTheCutterBelowTheTotal() {
+		assertThat(vale(List.of(glass("Cerveza")))).endsWith("{center}Total $17.000 · Venta #182{/center}{br}" + MARGIN);
+	}
+
+	@Test
+	void aReprintHasTheSameRoomForTheCutter() {
+		String content = ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), 3000, 0, true);
+
+		assertThat(content).endsWith("{center}Total $3.000 · Venta #182{/center}{br}" + MARGIN);
+	}
+
+	@Test
+	void theOnlyEmptyLinesAreTheMarginAtTheEnd() {
+		String content = ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza"), glass("Agua")), 6000, 500, false);
+		String printed = content.substring(0, content.length() - MARGIN.length());
+
+		assertThat(printed).doesNotContain("{br}{br}").endsWith("{center}Propina $500{/center}{br}");
 	}
 
 	@Test
@@ -74,7 +97,7 @@ class ValeContentTests {
 		String content = ValeContent.of(182, SOLD_AT, List.of(glass("Cerveza")), 17000, 1500, false);
 
 		assertThat(rows(content)).endsWith("Total $17.000 · Venta #182", "Propina $1.500");
-		assertThat(content).endsWith("{center}Propina $1.500{/center}{br}");
+		assertThat(content).endsWith("{center}Propina $1.500{/center}{br}" + MARGIN);
 	}
 
 	@Test
@@ -86,7 +109,7 @@ class ValeContentTests {
 	void aHugeSaleWithATipStillFits() {
 		String content = ValeContent.of(182, SOLD_AT, Collections.nCopies(400, glass("Cerveza")), 17000, 10000, true);
 
-		assertThat(content).hasSizeLessThanOrEqualTo(4096);
+		assertThat(content).hasSizeLessThanOrEqualTo(4096).endsWith(MARGIN);
 		assertThat(rows(content)).endsWith("Propina $10.000");
 	}
 

@@ -35,6 +35,14 @@ public final class ValeContent {
 
 	private static final String RULE = "-".repeat(WIDTH);
 
+	/**
+	 * Empty lines after the last one: the Smart's cutter sits a few mm above its print head, so without them it cuts
+	 * through the total (DRAMA-73).
+	 */
+	static final int CUT_MARGIN_LINES = 4;
+
+	private static final String CUT_MARGIN = line("").repeat(CUT_MARGIN_LINES);
+
 	private static final ZoneId SANTIAGO = ZoneId.of("America/Santiago");
 
 	private static final DateTimeFormatter DAY_AND_TIME = DateTimeFormatter.ofPattern("dd/MM · HH:mm");
@@ -55,7 +63,7 @@ public final class ValeContent {
 		String header = (reprint ? centered(bold("REIMPRESIÓN")) : "") + centered(bold("FIESTA DRAMA"))
 				+ centered(dayAndTime(soldAt)) + line(RULE);
 		String footer = line(RULE) + centered("Total " + pesos(total) + " · Venta #" + saleId)
-				+ (tip > 0 ? centered("Propina " + pesos(tip)) : "");
+				+ (tip > 0 ? centered("Propina " + pesos(tip)) : "") + CUT_MARGIN;
 		int room = MAX_LENGTH - header.length() - footer.length();
 
 		String body = body(glasses.stream().map(glass -> BOX + text(glass)).toList());
