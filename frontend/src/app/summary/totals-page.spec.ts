@@ -111,6 +111,7 @@ describe('TotalsPage', () => {
 
   afterEach(() => {
     fixture?.destroy();
+    httpTesting.match('/api/point/terminals'); // PointTerminalControl, with its own spec.
     httpTesting.verify();
     vi.useRealTimers();
     setHidden(false);

@@ -132,6 +132,7 @@
       [savings]="cart.totals().savings"
       [methodsHidden]="!!unconfirmedSale()"
       [(paymentMethod)]="paymentMethod"
+      [mercadoPagoLabel]="mercadoPagoLabel()"
       [canConfirm]="canConfirm()"
       [submitting]="submitting()"
       [hint]="unconfirmedSale() ? null : blockReason()"
@@ -179,6 +180,31 @@
   />
 }
 
+@if (charge(); as current) {
+  @if (current.kind === 'card') {
+    <app-point-charge-screen
+      [charge]="current"
+      (finished)="chargeFinished()"
+      (returned)="chargeReturned($event)"
+    />
+  } @else {
+    <app-cash-charge-screen
+      [charge]="current"
+      [canVoid]="!!current.sale"
+      (finished)="chargeFinished()"
+      (voidRequested)="current.sale && startVoid(current.sale)"
+    />
+  }
+}
+
+@if (reprinting() && lastVale(); as last) {
+  <app-vale-dialog
+    [saleId]="last.saleId"
+    [terminal]="last.terminal"
+    (closed)="reprinting.set(false)"
+  />
+}
+
 @if (recentOpen()) {
   <app-recent-sales-sheet
     [sales]="recentSales.hasValue() ? recentSales.value() : []"
@@ -186,7 +212,11 @@
     [loading]="recentSales.isLoading() || recentRefunds.isLoading()"
     [error]="recentSales.error() ? recentErrorMessage() : null"
     [refundsError]="!!recentRefunds.error()"
+    [pointMarks]="pointMarks.hasValue() ? pointMarks.value() : []"
+    [pointMarksError]="!!pointMarks.error()"
     [hasOpenEvent]="!!openEvent()"
+    [lastValeSaleId]="lastVale()?.saleId ?? null"
+    (reprintRequested)="openReprint()"
     (voidRequested)="startVoid($event)"
     (refundRequested)="startRefund()"
     (refundVoidRequested)="startVoidRefund($event)"

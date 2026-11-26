@@ -45,3 +45,14 @@ dramapp:
     session-ttl: 24h
     secure-cookie: false
     require-production-secrets: false
+  point:
+    # Charging with the Point Smart (DRAMA-71). Without terminals it is off and nothing else is required.
+    # id=name;id=name
+    terminals: ${DRAMAPP_POINT_TERMINALS:}
+    # Mercado Pago's production token: only here and in Render, never in the repo, the logs or the frontend.
+    access-token: ${DRAMAPP_POINT_ACCESS_TOKEN:}
+    # no_ticket, or seller_ticket to go back to Mercado Pago's receipt without a deploy.
+    print-on-terminal: ${DRAMAPP_POINT_PRINT_ON_TERMINAL:no_ticket}
+    # Same Mercado Pago account locally and in production: sale 182 of each one must not share its key.
+    key-prefix: ${DRAMAPP_POINT_KEY_PREFIX:}
+    base-url: https://api.mercadopago.com

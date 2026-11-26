@@ -3,20 +3,21 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { FontSizeControl } from '../display/font-size-control';
+import { PointTerminalControl } from '../point/point-terminal-control';
 import { CartStore } from '../sale/cart-store';
 import { AuthStore } from './auth-store';
 import { AuthService } from './auth.service';
 import { formatExpiry } from './session-format';
 
 /**
- * Who is logged in and until when, this phone's text size, the admin-only link to /estado, and
- * "Cerrar sesión".
+ * Who is logged in and until when, this phone's text size and what it charges Mercado Pago with, the admin-only
+ * link to /estado, and "Cerrar sesión".
  * Logging out on purpose empties the cart, the saved one too (someone else may use the phone next);
  * a 401 does not.
  */
 @Component({
   selector: 'app-session-bar',
-  imports: [RouterLink, FontSizeControl],
+  imports: [RouterLink, FontSizeControl, PointTerminalControl],
   template: `
     @if (auth.session(); as session) {
       <section class="session" aria-label="Sesión">
@@ -24,6 +25,7 @@ import { formatExpiry } from './session-format';
           Sesión <strong>{{ session.username }}</strong> · hasta {{ expiry() }}
         </p>
         <app-font-size-control />
+        <app-point-terminal-control />
         @if (confirming()) {
           <p class="question" role="alert">¿Cerrar sesión? Se vacía el carrito.</p>
           <div class="actions">

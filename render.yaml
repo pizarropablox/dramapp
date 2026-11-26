@@ -34,6 +34,15 @@ services:
         sync: false
       - key: DRAMAPP_ADMIN_PASSWORD
         sync: false
+      # Point Smart (DRAMA-71). Off until DRAMAPP_POINT_TERMINALS has a value; added by hand in the dashboard too.
+      - key: DRAMAPP_POINT_TERMINALS
+        sync: false
+      - key: DRAMAPP_POINT_ACCESS_TOKEN
+        sync: false
+      - key: DRAMAPP_POINT_KEY_PREFIX
+        sync: false
+      - key: DRAMAPP_POINT_PRINT_ON_TERMINAL
+        sync: false
 
   - type: web
     name: dramapp

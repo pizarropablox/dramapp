@@ -112,6 +112,10 @@ La configuración de Render vive en [`render.yaml`](render.yaml) (Blueprint) y l
 | Render, `dramapp-backend` | `DRAMAPP_JWT_SECRET` | clave que firma las sesiones: base64 de 256 bits (secreta, ver [Usuarios y contraseñas](#usuarios-y-contraseñas)) |
 | Render, `dramapp-backend` | `DRAMAPP_BARRA_PASSWORD` | hash `{bcrypt}...` de la clave de `barra` (secreto) |
 | Render, `dramapp-backend` | `DRAMAPP_ADMIN_PASSWORD` | hash `{bcrypt}...` de la clave de `admin` (secreto) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_TERMINALS` | Points Smart como `id=nombre;id=nombre`. **Vacía: la función queda apagada** (ver [Cobrar con la Point Smart](#cobrar-con-la-point-smart)) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_ACCESS_TOKEN` | Access Token productivo de Mercado Pago (secreto) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_KEY_PREFIX` | `prod26` en el simulacro y `prod27` en la fiesta; en local, otro valor. **Nunca se reutiliza** (ver [Cobrar con la Point Smart](#cobrar-con-la-point-smart)) |
+| Render, `dramapp-backend` | `DRAMAPP_POINT_PRINT_ON_TERMINAL` | opcional: `no_ticket` (por defecto) o `seller_ticket` |
 | Render, `dramapp` | `NODE_VERSION` | `24.20.0` (ya viene en `render.yaml`) |
 
 Render entrega `PORT` solo; el backend lo usa (`server.port: ${PORT:8080}`).
@@ -316,6 +320,55 @@ Es para lo que **se acaba durante la noche** y puede volver si llega más. Lo ma
 - Las marcas son de cada evento: el evento siguiente parte sin ninguna.
 
 **Antes de la fiesta**, tocar **Actualizar** en todos los teléfonos después de un deploy: un teléfono con la versión anterior no muestra el gris, y si intenta vender algo marcado ve «El evento está cerrado», aunque no lo esté. El carrito no se pierde. Los previews de PR usan el backend de producción, así que marcar agotados no funciona ahí hasta desplegarlo: se prueba en local.
+
+### Cobrar con la Point Smart
+
+Con `DRAMAPP_POINT_TERMINALS` definida, cada teléfono elige en **Totales** (al final) con qué cobra Mercado Pago: **Point Mini**, que es lo de siempre y el valor por defecto, o una Smart. Es un ajuste del teléfono: «Cerrar sesión» no lo borra. La Smart debe estar en modo PDV.
+
+- **Tarjeta:** al confirmar, el monto aparece solo en la Smart y la app espera el pago. Al pagarse, la Smart imprime el vale.
+- **Efectivo:** la app pide el dinero, y el vale se imprime al tocar «Recibido».
+- **«Volver al carrito»** cancela en la Smart. La venta se anula solo cuando Mercado Pago confirma que no se cobró.
+- **Si Mercado Pago no da un resultado,** se cierra a mano con lo que diga la Smart. «APROBADO» deja la venta cerrada a mano, por verificar en el panel de Mercado Pago.
+- Con un cobro abierto no se puede anular la venta ni cerrar el evento.
+
+**Apagarla:** borra `DRAMAPP_POINT_TERMINALS` en Render (reinicia el backend) y pasa cada teléfono a Point Mini. Si falta una variable o la lista está mal escrita, el deploy no arranca y sigue la instancia anterior; un token o un id equivocado recién se nota al cobrar («La Point no está configurada»).
+
+**No hay modo de prueba:** un backend local, o un preview de PR, con el token real cobra e imprime en la Smart de verdad.
+
+**El prefijo de las claves.** `DRAMAPP_POINT_KEY_PREFIX` distingue en Mercado Pago la venta 182 de una base y la de otra. Usa uno para el simulacro (`prod26`) y otro para la fiesta (`prod27`), y **nunca reutilices un prefijo después de limpiar o restaurar la base**: los números de venta se repetirían, y Mercado Pago rechazaría el cobro o devolvería uno viejo.
+
+#### Checklist del admin antes de abrir
+
+- [ ] `DRAMAPP_POINT_KEY_PREFIX` es el de hoy (`prod26` simulacro, `prod27` fiesta) y no se usó antes de limpiar o restaurar la base.
+- [ ] Un cobro de prueba llega a la Smart y se cancela desde la app.
+
+#### Checklist de la barra
+
+- [ ] Smart enchufada, con papel y en la espera de PDV. Si se apagó o perdió conexión, toca **«Actualizar»** en esa pantalla.
+- [ ] Si al encender la Smart dice **«Hubo una falla de comunicación con el punto de venta»**, espera unos segundos y toca **«Actualizar»**.
+- [ ] Cada teléfono entra siempre con el mismo usuario: las cajeras con `barra`. Inicia sesión antes de abrir la barra y revisa en Totales que diga «hasta» una hora después de las 06:00.
+- [ ] Si un teléfono inició sesión en una prueba en las 24 h anteriores, cierra sesión y vuelve a entrar antes de abrir: si no, la sesión vence en plena fiesta.
+- [ ] Cada teléfono con la Point correcta en Totales.
+- [ ] Al aparecer **«Cobro realizado»**, toca **«Ir al inicio»**: el vale sale en ~4 s. Sin tocar nada tarda ~18 s y el cobro siguiente espera.
+- [ ] Si pregunta por un **«cobro similar»** (la misma tarjeta paga el mismo monto seguido), toca **«Continuar con cobro»**.
+- [ ] Si al reimprimir dice **«La Point está ocupada»**, espera 3 s y toca **«Reimprimir vale»** otra vez. Si sigue, mira la Smart: si está apagada, enciéndela y toca «Actualizar». Si sale un vale, entrégalo y no reimprimas.
+- [ ] No toques «Imprimir comprobante» por costumbre: es el comprobante de Mercado Pago, no el vale.
+- [ ] La pantalla se apaga al minuto. Un cobro la enciende; si no, aprieta el botón lateral.
+- [ ] Una Point Mini de reserva. Con la Smart en PDV no se puede cobrar a mano.
+- [ ] Si aparece **«Esta venta pudo haberse registrado»** con el botón **«Anulada o no está: seguir»**:
+  1. Toca **«Ver ventas»** y busca la venta. Compara **hora, monto y productos** con el aviso y el carrito: puede haber una igual de otro teléfono, y esa no se anula. Ante la duda, pregunta en los otros teléfonos antes de anular.
+  2. **Si está,** anúlala ahí y recién entonces toca «Anulada o no está: seguir». **No toques «seguir» si la venta aparece y no la has anulado:** quedaría registrada dos veces.
+  3. **Si no está,** toca «Anulada o no está: seguir».
+  4. Confirma de nuevo: ahora sí llega a la Smart.
+  5. **No cambies de Point en Totales** mientras el aviso esté abierto, ni toques «Cerrar sesión» o entres con otro usuario: el aviso y el carrito se perderían.
+- [ ] Si aparece **«La venta se cerró como no cobrada y está anulada. Avisa al admin»**: la Smart dijo APROBADO después de cerrar la venta como no cobrada. No vuelvas a cobrarle al cliente; avisa al admin y toca «Siguiente venta».
+
+#### Checklist del cierre
+
+- [ ] Ningún teléfono muestra un cobro.
+- [ ] Las ventas «Cerrada a mano, por verificar» (en Ventas) están revisadas en el panel de Mercado Pago.
+- [ ] Recién entonces, cierra el evento.
+- [ ] Cuadra los cobros de la app con el panel de Mercado Pago: un pago que llegó tarde, sobre una venta anulada, solo se ve ahí.
 
 ### Límites del plan gratis
 

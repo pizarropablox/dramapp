@@ -1,5 +1,7 @@
 package cl.dramapp.backend.event;
 
+import java.util.List;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,8 +11,11 @@ public class EventService {
 
 	private final EventRepository eventRepository;
 
-	public EventService(EventRepository eventRepository) {
+	private final List<EventCloseGuard> closeGuards;
+
+	public EventService(EventRepository eventRepository, List<EventCloseGuard> closeGuards) {
 		this.eventRepository = eventRepository;
+		this.closeGuards = closeGuards;
 	}
 
 	/** Creates an event, already open. Only one event can be open at a time. */
@@ -45,6 +50,7 @@ public class EventService {
 		if (event.getStatus() == EventStatus.CLOSED) {
 			throw new EventAlreadyClosedException(event);
 		}
+		closeGuards.forEach(guard -> guard.beforeClose(event));
 		event.close();
 		return EventResponse.from(eventRepository.saveAndFlush(event));
 	}

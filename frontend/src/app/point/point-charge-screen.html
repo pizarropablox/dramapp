@@ -1,0 +1,139 @@
+<div class="backdrop"></div>
+<section
+  class="screen"
+  [class]="view()"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="point-charge-title"
+>
+  <p class="where">{{ charge().terminal.name }} · venta #{{ charge().saleId }}</p>
+  <h2 #title id="point-charge-title" tabindex="-1" aria-live="polite">
+    {{ heading() }}
+    @if (view() === 'waiting') {
+      <span aria-hidden="true">{{ formatElapsed(elapsed()) }}</span>
+    }
+  </h2>
+  <p class="amount">{{ charge().amount | clp }}</p>
+
+  @switch (view()) {
+    @case ('waiting') {
+      @if (similarHint()) {
+        <p>{{ texts.similarCharge }}</p>
+      }
+    }
+    @case ('notReached') {
+      <p>Esperando pago… {{ formatElapsed(elapsed()) }}</p>
+    }
+    @case ('busyCharge') {
+      @if (problem()?.busy; as busy) {
+        <p>
+          Venta #{{ busy.saleId }}
+          @if (busy.amount !== null) {
+            · {{ busy.amount | clp }}
+          }
+        </p>
+      }
+      @if (other(); as order) {
+        <p class="other" role="status">{{ otherText(order) }}</p>
+      }
+      <div class="actions">
+        <button type="button" [disabled]="working()" (click)="seeOther()">Ver ese cobro</button>
+        <button type="button" [disabled]="working()" (click)="cancelOther()">Cancelarlo</button>
+      </div>
+    }
+    @case ('busyVale') {
+      <p>{{ texts.busyVale }}</p>
+      <button type="button" (click)="send(true)">Cancelar vale pendiente y cobrar</button>
+    }
+    @case ('busyUnknown') {
+      <p>{{ texts.busyUnknown }}</p>
+    }
+    @case ('notSent') {
+      @if (problem()?.message; as detail) {
+        <p>{{ detail }}</p>
+      }
+    }
+    @case ('cancelFailed') {
+      <p>{{ message() ?? texts.cancelFailed }}</p>
+      <button type="button" class="main" [disabled]="working()" (click)="goBack()">
+        Reintentar
+      </button>
+    }
+    @case ('expired') {
+      <p>{{ texts.expired }}</p>
+      <button type="button" class="main" [disabled]="working()" (click)="goBack()">
+        {{ backLabel() }}
+      </button>
+    }
+    @case ('contested') {
+      <button type="button" class="main" [disabled]="working()" (click)="finished.emit()">
+        Siguiente venta
+      </button>
+    }
+    @case ('notResponding') {
+      <p>{{ texts.notRespondingHelp }}</p>
+      <button type="button" class="main" (click)="poll()">Reintentar</button>
+    }
+    @case ('paid') {
+      @if (order()?.pendingVerification) {
+        <p>Cerrada a mano, por verificar</p>
+      }
+      @if (vale(); as printed) {
+        <app-vale-panel
+          [initial]="printed"
+          [terminal]="charge().terminal"
+          [titled]="true"
+          (printingChange)="printing.set($event)"
+        />
+      }
+      <button type="button" class="main" (click)="finished.emit()">Siguiente venta</button>
+    }
+    @case ('paidVoided') {
+      <p>La venta está anulada y no se arregla sola. Avisa al admin.</p>
+      <button type="button" class="main" (click)="finished.emit()">Siguiente venta</button>
+    }
+  }
+
+  @if (message() && view() !== 'cancelFailed') {
+    <p class="message" role="alert">{{ message() }}</p>
+  }
+
+  @if (canRetry()) {
+    <button type="button" class="main" [disabled]="working()" (click)="send()">
+      Reintentar en la Point
+    </button>
+  }
+
+  @if (canCloseByHand()) {
+    @if (closing(); as outcome) {
+      <p role="alert">
+        {{
+          outcome === 'PAID'
+            ? '¿Seguro que la Point dice APROBADO?'
+            : '¿Seguro que no se cobró y la Point no muestra el monto?'
+        }}
+      </p>
+      <div class="actions">
+        <button type="button" [disabled]="working()" (click)="closing.set(null)">No</button>
+        <button type="button" class="sure" [disabled]="working()" (click)="closeByHand()">
+          Sí, seguro
+        </button>
+      </div>
+    } @else {
+      <div class="actions">
+        <button type="button" [disabled]="working()" (click)="closing.set('PAID')">
+          La Point dice APROBADO
+        </button>
+        <button type="button" [disabled]="working()" (click)="closing.set('NOT_PAID')">
+          No se cobró y la Point no muestra el monto
+        </button>
+      </div>
+    }
+  }
+
+  @if (canGoBack()) {
+    <button type="button" class="back" [disabled]="working() || sending()" (click)="goBack()">
+      {{ backLabel() }}
+    </button>
+  }
+</section>

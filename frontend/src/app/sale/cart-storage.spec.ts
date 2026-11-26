@@ -98,6 +98,21 @@ describe('cart storage', () => {
     expect(load()?.pending).toEqual(pending);
   });
 
+  it.each([{ id: 'SMART-1', name: 'Smart 1' }, null, undefined])(
+    'restores the Point it was sent with: %j',
+    (terminal) => {
+      const pending = {
+        paymentMethod: 'MERCADO_PAGO' as const,
+        amountToCharge: 8500,
+        startedAt: NOW,
+        terminal,
+      };
+      save([line(JACK, 0, 1)], { pending });
+
+      expect(load()?.pending).toEqual(pending);
+    },
+  );
+
   it.each([
     ['another event', { eventId: 8, username: 'barra' }],
     ['another user', { eventId: 7, username: 'admin' }],

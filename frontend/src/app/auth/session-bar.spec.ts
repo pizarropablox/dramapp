@@ -8,6 +8,11 @@ import {
   FONT_SIZE_STORAGE_KEY,
   FontSizeStore,
 } from '../display/font-size-store';
+import {
+  POINT_STORAGE,
+  POINT_TERMINAL_STORAGE_KEY,
+  PointTerminalStore,
+} from '../point/point-terminal-store';
 import { ProductResponse } from '../product/product';
 import { CART_STORAGE, CART_STORAGE_KEY } from '../sale/cart-storage';
 import { CartStore } from '../sale/cart-store';
@@ -45,6 +50,7 @@ describe('SessionBar', () => {
       providers: [
         { provide: CART_STORAGE, useValue: storage },
         { provide: FONT_SIZE_STORAGE, useValue: storage },
+        { provide: POINT_STORAGE, useValue: storage },
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([
@@ -67,6 +73,8 @@ describe('SessionBar', () => {
     }
     fixture = TestBed.createComponent(SessionBar);
     fixture.detectChanges();
+    // PointTerminalControl, with its own spec.
+    httpTesting.match('/api/point/terminals').forEach((request) => request.flush([]));
     return fixture.nativeElement as HTMLElement;
   }
 
@@ -152,6 +160,23 @@ describe('SessionBar', () => {
     expect(TestBed.inject(FontSizeStore).size()).toBe('xlarge');
     expect(storage.getItem(FONT_SIZE_STORAGE_KEY)).toBe('xlarge');
     expect(document.documentElement.getAttribute('data-font-size')).toBe('xlarge');
+  });
+
+  it('keeps what this phone charges with after logging out', async () => {
+    const smart = { id: 'SMART-1', name: 'Smart 1' };
+    TestBed.inject(PointTerminalStore).set(smart);
+    const element = render('BARRA');
+
+    button(element, 'Cerrar sesión').click();
+    fixture.detectChanges();
+    button(element, 'Sí, cerrar').click();
+    httpTesting
+      .expectOne('/api/auth/logout')
+      .flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+
+    expect(TestBed.inject(PointTerminalStore).terminal()).toEqual(smart);
+    expect(storage.json(POINT_TERMINAL_STORAGE_KEY)).toEqual(smart);
   });
 
   it('logs out on this phone even if the backend cannot be reached', async () => {

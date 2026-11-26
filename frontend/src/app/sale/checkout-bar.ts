@@ -38,7 +38,7 @@ import { PAYMENT_METHOD_LABELS, PaymentMethod } from './sale';
             [disabled]="submitting()"
             (click)="paymentMethod.set(method)"
           >
-            {{ labels[method] }}
+            {{ method === 'MERCADO_PAGO' ? mercadoPagoLabel() : labels[method] }}
           </button>
         }
       </div>
@@ -175,6 +175,8 @@ export class CheckoutBar {
   readonly paymentMethod = model<PaymentMethod | null>(null);
   readonly canConfirm = input.required<boolean>();
   readonly submitting = input(false);
+  /** "Mercado Pago · Smart 1" when this phone charges with a Point Smart. */
+  readonly mercadoPagoLabel = input(PAYMENT_METHOD_LABELS.MERCADO_PAGO);
   /** While a sale may have been registered, its notice takes this row's place (see PendingSaleNotice). */
   readonly methodsHidden = input(false);
   /** Why the sale cannot be confirmed yet, if anything. */

@@ -17,11 +17,22 @@ import { PAYMENT_METHOD_LABELS } from './sale';
     <p>
       <strong>⚠ Esta venta pudo haberse registrado</strong> ({{ details() }}). Revisa Últimas
       ventas.
+      @if (smart()) {
+        <strong>Ya está: anúlala en Ventas y confírmala de nuevo.</strong>
+      }
     </p>
-    <div class="actions">
+    <div class="actions" [class.two]="smart()">
       <button type="button" (click)="review.emit()">Ver ventas</button>
-      <button type="button" (click)="registered.emit()">Ya está: vaciar</button>
-      <button type="button" class="continue" (click)="notRegistered.emit()">No está: seguir</button>
+      @if (smart()) {
+        <button type="button" class="continue" (click)="notRegistered.emit()">
+          Anulada o no está: seguir
+        </button>
+      } @else {
+        <button type="button" (click)="registered.emit()">Ya está: vaciar</button>
+        <button type="button" class="continue" (click)="notRegistered.emit()">
+          No está: seguir
+        </button>
+      }
     </div>
   `,
   styles: `
@@ -47,6 +58,10 @@ import { PAYMENT_METHOD_LABELS } from './sale';
       gap: 0.375rem;
     }
 
+    .two {
+      grid-template-columns: 1fr 2fr;
+    }
+
     button {
       min-width: 0;
       min-height: 0;
@@ -70,6 +85,12 @@ export class PendingSaleNotice {
   readonly registered = output<void>();
   /** "No está: seguir": it was not, so it can be confirmed again. */
   readonly notRegistered = output<void>();
+
+  /**
+   * It was confirmed to be charged with a Point Smart: if it was registered, it was never sent to it, nor its vale
+   * printed. Emptying the cart would leave it uncharged, so it is voided and confirmed again.
+   */
+  protected readonly smart = computed(() => this.pending().terminal != null);
 
   /** "23:15 · Mercado Pago · $12.000". */
   protected readonly details = computed(() => {

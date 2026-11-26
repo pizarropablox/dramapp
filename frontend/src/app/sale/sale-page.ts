@@ -15,6 +15,14 @@ import { Subscription } from 'rxjs';
 import { AuthStore } from '../auth/auth-store';
 import { SessionExpiryNotice } from '../auth/session-expiry-notice';
 import { CurrentEventStore } from '../event/current-event-store';
+import { CashChargeScreen } from '../point/cash-charge-screen';
+import { isPaid, PointOrderResponse } from '../point/point';
+import { PointChargeScreen } from '../point/point-charge-screen';
+import { cartOfCharge, chargeLines, PointChargeStore } from '../point/point-charge-store';
+import { PointTerminalStore } from '../point/point-terminal-store';
+import { PointService } from '../point/point.service';
+import { backToCartNotice } from '../point/point-texts';
+import { ValeDialog } from '../point/vale-dialog';
 import { ProductResponse, ProductVariantResponse, StockOutResponse } from '../product/product';
 import { ProductService } from '../product/product.service';
 import { CreateRefundRequest, RefundResponse } from '../refund/refund';
@@ -29,7 +37,7 @@ import { CartStore, EmptiedCart } from './cart-store';
 import { CheckoutBar } from './checkout-bar';
 import { PendingSaleNotice } from './pending-sale-notice';
 import { ProductGrid } from './product-grid';
-import { MAX_TIP, PaymentMethod, SaleResponse } from './sale';
+import { MAX_TIP, PAYMENT_METHOD_LABELS, PaymentMethod, SaleResponse } from './sale';
 import { SaleConfirmation } from './sale-confirmation';
 import { SaleService } from './sale.service';
 import { RecentSalesSheet } from './recent-sales-sheet';
@@ -91,8 +99,10 @@ function normalize(text: string): string {
   selector: 'app-sale-page',
   imports: [
     CartPanel,
+    CashChargeScreen,
     CheckoutBar,
     PendingSaleNotice,
+    PointChargeScreen,
     ProductGrid,
     RecentSalesSheet,
     RefundDialog,
@@ -101,6 +111,7 @@ function normalize(text: string): string {
     SessionExpiryNotice,
     StockSheet,
     TipSelector,
+    ValeDialog,
     VariantPicker,
     VoidRefundDialog,
     VoidSaleDialog,
@@ -117,6 +128,27 @@ export class SalePage {
   private readonly auth = inject(AuthStore);
   private readonly document = inject(DOCUMENT);
   protected readonly cart = inject(CartStore);
+  private readonly pointTerminal = inject(PointTerminalStore);
+  private readonly pointCharge = inject(PointChargeStore);
+  private readonly pointService = inject(PointService);
+
+  /** The sale being charged with a Point Smart; after a reload it is found again. */
+  protected readonly charge = computed(() =>
+    this.returnedOrder() ? null : this.pointCharge.charge(),
+  );
+  /** This phone's last vale from a Smart, to print it again from "Ventas". */
+  protected readonly lastVale = this.pointCharge.lastVale;
+  protected readonly reprinting = signal(false);
+  /** Nothing was charged: the order goes back to the cart as soon as there is a menu to rebuild it with. */
+  private readonly returnedOrder = signal<PointOrderResponse | null>(null);
+
+  /** The cashier reads where the amount will show up; with a Point Mini it says what it always has. */
+  protected readonly mercadoPagoLabel = computed(() => {
+    const terminal = this.pointTerminal.terminal();
+    return terminal
+      ? `${PAYMENT_METHOD_LABELS.MERCADO_PAGO} · ${terminal.name}`
+      : PAYMENT_METHOD_LABELS.MERCADO_PAGO;
+  });
 
   protected readonly menu = rxResource({ stream: () => this.productService.getMenu() });
   /** The menu asked again when the app is back in the foreground (see refreshMenu). */
@@ -191,6 +223,18 @@ export class SalePage {
   protected readonly recentRefunds = rxResource({
     params: () => (this.recentOpen() ? true : undefined),
     stream: () => this.refundService.recent(),
+  });
+
+  /**
+   * Sales whose charge on the Point someone must look at. Not asked by barra with a Point Mini, where nothing
+   * changes; admin always sees them.
+   */
+  protected readonly pointMarks = rxResource({
+    params: () =>
+      this.recentOpen() && (this.pointTerminal.terminal() || this.auth.isAdmin())
+        ? true
+        : undefined,
+    stream: () => this.pointService.markedSales(),
   });
 
   /** The sale whose void is being confirmed, from the confirmation or from the list. */
@@ -298,6 +342,14 @@ export class SalePage {
         }
         knownEventId = eventId;
       });
+    });
+
+    effect(() => {
+      const order = this.returnedOrder();
+      const menu = this.menu.hasValue() ? this.menu.value() : null;
+      if (order && menu) {
+        untracked(() => this.backToCart(order, menu));
+      }
     });
 
     // A line going grey may be out of view: the cart can be collapsed, and "Muy grande" may show a single row.
@@ -473,6 +525,8 @@ export class SalePage {
       lines: this.cart.toRequestLines(),
       tipAmount: this.tipAmount(),
     };
+    // What it will be charged with, decided now: the choice may change while the answer comes.
+    const terminal = this.pointTerminal.terminal();
     this.submitting.set(true);
     this.saleError.set(null);
     // Its answer would be older than the sale's, and its marks would undo the newer ones.
@@ -482,6 +536,7 @@ export class SalePage {
       paymentMethod,
       amountToCharge: this.cart.totals().subtotal + request.tipAmount,
       startedAt: Date.now(),
+      terminal,
     });
     // If this page is left before the answer, the request is cancelled but the cart stays "sending".
     this.saleService
@@ -489,7 +544,21 @@ export class SalePage {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (sale) => {
-          this.lastSale.set(sale);
+          if (terminal) {
+            // Saved before the cart is emptied: a reload in between must not lose it.
+            this.pointCharge.start({
+              saleId: sale.id,
+              kind: paymentMethod === 'EFECTIVO' ? 'cash' : 'card',
+              amount: sale.amountToCharge,
+              terminal,
+              startedAt: Date.now(),
+              lines: chargeLines(this.cart.lines()),
+              tip: this.cart.tip(),
+              sale: paymentMethod === 'EFECTIVO' ? sale : null,
+            });
+          } else {
+            this.lastSale.set(sale);
+          }
           this.showNotice(null);
           this.cart.clear();
           this.paymentMethod.set(null);
@@ -525,6 +594,34 @@ export class SalePage {
       });
   }
 
+  protected chargeFinished(): void {
+    this.pointCharge.finishPaid();
+  }
+
+  protected openReprint(): void {
+    this.recentOpen.set(false);
+    this.reprinting.set(true);
+  }
+
+  protected chargeReturned(order: PointOrderResponse): void {
+    if (!isPaid(order)) {
+      this.returnedOrder.set(order);
+    }
+  }
+
+  private backToCart(order: PointOrderResponse, menu: ProductResponse[]): void {
+    const charge = this.pointCharge.charge();
+    this.returnedOrder.set(null);
+    this.pointCharge.finish();
+    // Never over another order.
+    if (!charge || !this.cart.isEmpty()) {
+      return;
+    }
+    const { cart, removed } = cartOfCharge(charge, menu);
+    this.cart.putBack(cart);
+    this.showNotice(backToCartNotice(order, removed));
+  }
+
   protected openRecent(): void {
     this.showNotice(null);
     this.recentOpen.set(true);
@@ -540,6 +637,7 @@ export class SalePage {
   protected reloadRecent(): void {
     this.recentSales.reload();
     this.recentRefunds.reload();
+    this.pointMarks.reload();
   }
 
   protected startVoid(sale: SaleResponse): void {
@@ -569,6 +667,9 @@ export class SalePage {
           this.voiding.set(null);
           if (this.lastSale()?.id === voided.id) {
             this.lastSale.set(null);
+          }
+          if (this.pointCharge.charge()?.saleId === voided.id) {
+            this.pointCharge.finish();
           }
           if (this.recentSales.hasValue()) {
             this.recentSales.update((sales) =>

@@ -8,8 +8,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { PointSaleMark } from '../point/point';
 import { RefundResponse } from '../refund/refund';
-import { ClpPipe } from '../shared/clp';
+import { ClpPipe, formatClp } from '../shared/clp';
 import { formatTime } from '../shared/time';
 import { PAYMENT_METHOD_LABELS, SaleResponse } from './sale';
 import { saleSummary } from './sale-format';
@@ -51,6 +52,11 @@ function createdAt(entry: Entry): number {
         <!-- The cart is app-wide, so leaving the sale screen keeps it. -->
         <a class="totals" routerLink="/totales">Totales →</a>
       </div>
+      @if (lastValeSaleId(); as saleId) {
+        <button type="button" (click)="reprintRequested.emit()">
+          Reimprimir vale de la venta #{{ saleId }}
+        </button>
+      }
       <div class="body">
         @if (loading()) {
           <p class="note" role="status">Cargando ventas…</p>
@@ -62,6 +68,9 @@ function createdAt(entry: Entry): number {
         } @else {
           @if (refundsError()) {
             <p class="warning" role="alert">No se pudieron cargar las devoluciones.</p>
+          }
+          @if (pointMarksError()) {
+            <p class="warning" role="alert">No se pudieron cargar los avisos de la Point.</p>
           }
           @if (entries().length === 0) {
             <p class="note">
@@ -86,6 +95,9 @@ function createdAt(entry: Entry): number {
                       <p class="summary">{{ summary(sale) }}</p>
                       @if (sale.voidReason) {
                         <p class="reason">Motivo: {{ sale.voidReason }}</p>
+                      }
+                      @for (mark of marksOf(sale); track mark) {
+                        <p class="point-mark">{{ mark }}</p>
                       }
                     </div>
                     <div class="side">
@@ -322,6 +334,17 @@ function createdAt(entry: Entry): number {
       text-align: center;
     }
 
+    // Not dimmed or struck through with a voided sale: it is money to look at.
+    .point-mark {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 0.4rem;
+      background: var(--danger-bg);
+      color: var(--danger-text);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
     .warning {
       margin-bottom: 0.25rem;
       padding: 0.4rem 0.75rem;
@@ -357,10 +380,15 @@ export class RecentSalesSheet {
   /** The refunds failed to load (e.g. a backend older than DRAMA-41): the sales are still shown. */
   readonly refundsError = input(false);
   readonly hasOpenEvent = input(true);
+  readonly pointMarks = input<readonly PointSaleMark[]>([]);
+  readonly pointMarksError = input(false);
+  /** This phone's last sale with a vale from a Smart. */
+  readonly lastValeSaleId = input<number | null>(null);
   readonly voidRequested = output<SaleResponse>();
   readonly refundRequested = output<void>();
   readonly refundVoidRequested = output<RefundResponse>();
   readonly retry = output<void>();
+  readonly reprintRequested = output<void>();
   readonly closed = output<void>();
 
   protected readonly labels = PAYMENT_METHOD_LABELS;
@@ -384,6 +412,16 @@ export class RecentSalesSheet {
   /** Sales and refunds have their own ids: "sale-12" and "refund-12" can both exist. */
   protected key(entry: Entry): string {
     return entry.kind === 'sale' ? `sale-${entry.sale.id}` : `refund-${entry.refund.id}`;
+  }
+
+  /** Both may be true, in different charges of the sale. */
+  protected marksOf(sale: SaleResponse): string[] {
+    const marks = this.pointMarks().filter((mark) => mark.saleId === sale.id);
+    const paid = marks.find((mark) => mark.paidOnVoidedSale);
+    return [
+      ...(marks.some((mark) => mark.pendingVerification) ? ['Cerrada a mano, por verificar'] : []),
+      ...(paid ? [`Cobro recibido en una venta anulada (${formatClp(paid.amount)})`] : []),
+    ];
   }
 
   protected summary(sale: SaleResponse): string {
